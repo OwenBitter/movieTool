@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>🎬 电影分类浏览器</title>
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+
+<header>
+  <h1>🎬 电影分类浏览器</h1>
+  <div class="header-right">
+    <div class="stats" id="stats">加载中...</div>
+  </div>
+</header>
+
+<!-- Row 1: 主工具栏 — 搜索 + 排序 + 视图 + 操作按钮 -->
+<div class="toolbar">
+  <input type="text" id="search" placeholder="🔍 搜索番号 / 演员 / 片名..." autocomplete="off">
+  <select id="sort-select">
+    <option value="time">🕐 下载时间</option>
+    <option value="rating">⭐ 评分</option>
+    <option value="name">📛 名称</option>
+  </select>
+  <div class="view-toggle" id="view-toggle">
+    <button class="view-btn active" data-view="card" onclick="switchView('card')" title="卡片视图">🟫 卡片</button>
+    <button class="view-btn" data-view="table" onclick="switchView('table')" title="表格视图">📋 表格</button>
+  </div>
+  <button class="toolbar-btn" onclick="exportCSV()" title="导出当前筛选结果为 CSV">📥 导出</button>
+  <button class="toolbar-btn" onclick="openTagManager()" title="管理标签库">🏷 标签管理</button>
+</div>
+
+<!-- Row 2: 筛选摘要栏 -->
+<div class="filter-bar" id="filter-bar">
+  <button class="filter-toggle" id="filter-toggle" onclick="toggleFilterPanel()">
+    🔽 筛选条件
+    <span class="filter-count" id="filter-count" style="display:none"></span>
+  </button>
+  <div class="active-filters" id="active-filters"></div>
+  <button class="clear-all-btn" id="clear-all-btn" style="display:none" onclick="clearAllFilters()">✕ 清除全部</button>
+</div>
+
+<!-- Filter Panel (collapsible) -->
+<div class="filter-panel" id="filter-panel" style="display:none">
+  <div class="filter-section">
+    <div class="filter-section-title">⭐ 最低评分</div>
+    <div class="star-filter" id="star-filter"></div>
+  </div>
+  <div class="filter-section">
+    <div class="filter-section-title">📌 状态</div>
+    <div class="status-chips" id="status-chips"></div>
+  </div>
+  <div class="filter-section">
+    <div class="filter-section-title">📌 属性标签</div>
+    <div class="filter-tag-grid" id="filter-tag-grid-attr"></div>
+  </div>
+  <div class="filter-section">
+    <div class="filter-section-title">🎬 类型标签</div>
+    <div class="filter-tag-grid" id="filter-tag-grid-type"></div>
+  </div>
+</div>
+
+<div class="main">
+  <aside id="sidebar">
+    <div class="sidebar-header">
+      <h3>演员列表</h3>
+      <span class="count" id="actor-count"></span>
+    </div>
+    <div class="sidebar-search">
+      <input type="text" id="actor-search" placeholder="搜索演员..." autocomplete="off">
+    </div>
+    <nav id="actor-list"></nav>
+  </aside>
+
+  <main id="content">
+    <div class="content-header" id="content-header">
+      <h2 id="current-title">全部影片</h2>
+      <span class="count" id="movie-count"></span>
+      <button class="select-btn" onclick="selectAllVisible()">全选</button>
+      <button class="select-btn" onclick="deselectAll()">取消</button>
+      <span class="selected-info" id="selected-info" style="display:none"></span>
+      <span id="batch-btns" style="display:none">
+        <button class="batch-btn delete-btn" onclick="batchDelete()" title="删除选中影片（同时删除文件）">🗑 删除</button>
+        <button class="batch-btn" onclick="batchMove()" title="移动选中影片到其他文件夹">📁 移动</button>
+        <button class="batch-btn" onclick="batchCopy()" title="复制选中影片到其他文件夹">📋 复制</button>
+        <button class="batch-btn" onclick="batchTagsAdd()" title="为选中影片添加标签">＋标签</button>
+        <button class="batch-btn" onclick="batchTagsSet()" title="覆盖选中影片的标签">✎ 改标签</button>
+        <button class="batch-btn" onclick="batchTagsRemove()" title="从选中影片移除标签">−标签</button>
+      </span>
+      <button class="open-filtered-btn" onclick="openFiltered()" title="在资源管理器中打开选中的文件夹（无选中则打开全部）">📂 打开</button>
+    </div>
+    <div class="movie-grid" id="movie-grid"></div>
+    <div class="movie-table-wrap" id="movie-table-wrap" style="display:none">
+      <table class="movie-table" id="movie-table">
+        <thead>
+          <tr>
+            <th class="col-check"><input type="checkbox" id="select-all-checkbox" onchange="toggleAll(this.checked)"></th>
+            <th class="col-name">影片名称</th>
+            <th class="col-actor">演员</th>
+            <th class="col-year">年份</th>
+            <th class="col-rating">评分</th>
+            <th class="col-tags">标签</th>
+            <th class="col-size">大小</th>
+            <th class="col-time">下载时间</th>
+            <th class="col-actions">操作</th>
+          </tr>
+        </thead>
+        <tbody id="movie-tbody"></tbody>
+      </table>
+    </div>
+  </main>
+</div>
+
+<!-- Tag editor popover -->
+<div class="tag-editor" id="tag-editor" style="display:none">
+  <div class="tag-editor-title">选择标签</div>
+  <div class="tag-editor-list" id="tag-editor-list"></div>
+  <div class="tag-editor-custom">
+    <input type="text" id="tag-custom-input" placeholder="自定义标签...">
+    <button onclick="addCustomTag()">+</button>
+  </div>
+  <div class="tag-editor-actions">
+    <button class="btn-cancel" onclick="closeTagEditor()">取消</button>
+    <button class="btn-confirm" onclick="saveTags()">保存</button>
+  </div>
+</div>
+
+<!-- Toast -->
+<div class="toast" id="toast" style="display:none"></div>
+
+<script src="/static/script.js"></script>
+</body>
+</html>

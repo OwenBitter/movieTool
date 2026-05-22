@@ -1,0 +1,31 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+
+# Virtual environments
+venv/
+.env
+
+# IDE
+.idea/
+.vscode/
+.claude/
+
+# Node / React
+web/frontend/node_modules/
+web/frontend/dist/
+web/static/dist/
+
+# User config (contains personal paths)
+config.json
+
+# Backups
+*.bak
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
