@@ -46,6 +46,17 @@ export default function App() {
     reload();
   }, [reload]);
 
+  const fetchActors = useStore((s) => s.fetchActors);
+  const fetchTags = useStore((s) => s.fetchTags);
+  const fetchStats = useStore((s) => s.fetchStats);
+
+  // Initial data load
+  useEffect(() => {
+    fetchActors();
+    fetchTags();
+    fetchStats();
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
   // Sync theme to <html> data attribute for CSS
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', theme);

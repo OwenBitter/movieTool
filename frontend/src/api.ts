@@ -100,7 +100,7 @@ export async function fetchTags(): Promise<TagConfig> {
 }
 
 export async function addTag(name: string, group: string): Promise<void> {
-  await postJSON(`${BASE}/tags/add`, { name, group });
+  await postJSON(`${BASE}/tags/add`, { tag: name, group });
 }
 
 export async function renameTag(oldName: string, newName: string): Promise<void> {

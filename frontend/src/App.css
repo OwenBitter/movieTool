@@ -79,6 +79,9 @@ html, body, #root {
   gap: 12px;
   padding: 16px 0;
   align-items: stretch;
+  /* Virtual scrolling: only render cards in viewport, skip off-screen */
+  content-visibility: auto;
+  contain-intrinsic-size: 320px;
 }
 
 /* Movie Card — full height in grid row, flex column for consistent layout */

@@ -1,17 +1,8 @@
-import { useEffect } from 'react';
 import { useStore } from '../store';
-import * as api from '../api';
 
 export function useTags() {
   const movies = useStore((s) => s.movies);
   const tagsConfig = useStore((s) => s.tagsConfig);
-  const setTagsConfig = useStore((s) => s.setTagsConfig);
-  const setStats = useStore((s) => s.setStats);
-
-  useEffect(() => {
-    api.fetchTags().then(setTagsConfig);
-    api.fetchStats().then(setStats);
-  }, [setTagsConfig, setStats]);
 
   const activeFilterCount =
     (movies.rating > 0 ? 1 : 0) +

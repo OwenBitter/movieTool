@@ -66,20 +66,25 @@ export function MovieCard({ movie, onUpdated }: MovieCardProps) {
     }
   };
 
-  const thumbUrl = `/api/thumb/${movie.movie_id}`;
+  const [imgSrc, setImgSrc] = useState(`/api/cover/${movie.movie_id}`);
+  const [imgHidden, setImgHidden] = useState(false);
+
+  const handleImgError = () => {
+    setImgHidden(true);
+  };
 
   return (
     <div className={`movie-card ${ratingClass} ${isSelected ? 'selected' : ''}`}>
-      {/* Thumbnail */}
+      {/* Cover image */}
       <div className="card-thumb" onClick={() => playMovie(movie.movie_id)} title="点击播放">
-        <img
-          src={thumbUrl}
-          alt={movie.movie_name || movie.file_name}
-          loading="lazy"
-          onError={(e) => {
-            (e.target as HTMLElement).style.display = 'none';
-          }}
-        />
+        {!imgHidden && (
+          <img
+            src={imgSrc}
+            alt={movie.movie_name || movie.file_name}
+            loading="lazy"
+            onError={handleImgError}
+          />
+        )}
         <PlayCircleOutlined className="card-thumb-play" />
       </div>
       <div className="card-body">

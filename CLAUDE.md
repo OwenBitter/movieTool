@@ -1,66 +1,107 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+This file provides guidance to Claude Code when working with code in this repository.
 
 ## Project Overview
 
-A Python + Excel movie management system for scanning, classifying, tagging, and browsing Japanese AV video files. Three interfaces share the same `core/` modules: a CLI (`main.py`), a Tkinter GUI (`ui/`), and a Flask + React/TypeScript web app (`web/`).
+Python + Excel movie management system for scanning, classifying, tagging, and browsing JAV files. Flask backend split into `web/routes/`, React 18 + TypeScript + Ant Design 5 + Zustand frontend at `frontend/`.
 
-## Commands
+## Quick Commands
 
 ```bash
-# CLI mode
-python main.py --cli scan|classify|copy|backup|fetch|show
-python main.py scan          # scan download_dir, write to Excel
-python main.py classify      # move files into classify_dir by actor
-python main.py copy          # copy managed files to copy_target_dir
-python main.py backup        # backup Excel file
-python main.py fetch --name "CODE-123"
-python main.py show --status classified
+# Web UI (production)
+cd /mnt/e/tools/movieTool && PYTHONPATH=/mnt/e/tools/movieTool python3 web/app.py  # → :5000
 
-# Web app (Flask backend + React frontend)
-python web/app.py            # starts on http://localhost:5000
+# Frontend
+cd frontend && npx vite build              # production build → web/static/dist/
+cd frontend && npx tsc --noEmit            # type check
 
-# React frontend dev
-cd frontend && npm run dev    # Vite dev server
-cd frontend && npm run build  # TypeScript + Vite production build → web/static/dist/
+# CLI
+python3 main.py scan|classify|copy|backup|show
+
+# Data enrichment
+python3 scripts/enrich_from_javbus.py --apply       # javbus: dates + tags + covers
+python3 scripts/tag_by_code.py --apply               # code prefix → type tags
+python3 scripts/tag_actresses.py                     # actress → attribute tags
+python3 scripts/pregen_thumbs.py --generate          # ffmpeg thumbnails
+python3 scripts/detect_dupes.py                      # duplicate detection
 ```
 
-## Architecture
+## Architecture (v4.2)
 
 ```
-main.py              # CLI/GUI entry point, builds AppContext, dispatches commands
 core/
-  app_context.py     # Shared context: holds ConfigManager + Logger + ExcelManager, provides maybe_backup()
-  config_manager.py  # JSON config read/write/validate/ensure_paths; auto-creates default config.json
-  excel_manager.py   # OpenPyXL wrapper — Excel IS the database. Stores 11-column movie records.
-  scanner.py         # Walks download_dir, discovers video files, adds/updates Excel rows
-  classifier.py      # Moves files into classify_dir/<actor>/ folders, updates status=classified
-  copier.py          # Copies managed files to copy_target_dir (dedup by file size)
-  metadata_fetcher.py   # Queries external movie metadata API
-  actress_fetcher.py    # Scrapes njavtv.art to extract actress names from AV codes
-  logger.py          # Timestamped rotating log files with auto-cleanup
-ui/
-  main_window.py     # Tkinter GUI with tabs: config, tools, logs
+├── excel_manager.py     # 11-column Excel CRUD
+├── config_manager.py    # JSON config (paths, tags, rating)
+├── javbus_fetcher.py    # javbus.com search/detail/cover
+├── scanner.py           # Discover new files → Excel
+├── classifier.py        # Move files by actor
+├── copier.py            # Copy to external drives
+├── tag_utils.py         # merge_tags()
+├── logger.py            # Timestamped rotating logs
+├── app_context.py       # Shared ctx: Config + Logger + Excel
 web/
-  app.py             # Flask API server (20+ endpoints) — serves React SPA + REST API, no DB
-  static/dist/       # Built React SPA (served at /)
-frontend/            # React 18 + TypeScript + AntD 5 + Zustand + Vite
+├── app.py               # Flask init + SPA fallback (~45 lines)
+├── shared.py            # _load_config, get_excel, filter_records, format_movie...
+├── server_state.py      # In-memory cache (actors, tags_usage, stats) — invalidate() on mutations
+├── watcher.py           # watchdog file monitor (auto-add new files)
+├── routes/
+│   ├── movies.py        # /api/movies GET/PATCH, quick-rate, export
+│   ├── actors.py        # /api/actors, /api/actress/<name>/detail
+│   ├── tags.py          # /api/tags CRUD
+│   ├── batch.py         # batch delete/move/copy/tags
+│   ├── stats.py         # /api/stats, /api/stats/detail
+│   ├── files.py         # open-folder, open-filtered, play, thumb, cover
+│   ├── backups.py       # backup list/create/restore/delete
+│   ├── metadata.py      # POST /api/metadata/scan
+│   └── progress.py      # SSE /api/progress/<task_id>
+frontend/
+├── src/
+│   ├── store/index.ts   # Zustand store + async fetch actions
+│   ├── hooks/           # Thin selectors (useMovies, useTags, useActors, useRating, useUndo)
+│   ├── components/      # movies/, tags/, batch/, stats/, layout/, actress/, backup/, rating/
+│   ├── types.ts, api.ts, App.tsx, App.css
+│   └── styles/theme.ts  # Cinema Noir dark theme
+├── vite.config.ts       # outDir: ../web/static/dist, proxy /api → :5000
+└── package.json         # react 18, antd 5, zustand 5, typescript 5, vite 6
+scripts/
+├── enrich_from_javbus.py  # Batch javbus: dates + translated tags + covers
+├── tag_by_code.py         # JAV prefix → type tags (80+ mappings)
+├── tag_actresses.py       # Actress → attribute tags (144 KB)
+├── pregen_thumbs.py       # Batch ffmpeg thumbnails
+└── detect_dupes.py        # Duplicate code detection
 ```
 
-**Excel as database**: `excel_manager.py` uses a Chinese header row for display but maps everything to English internal keys (`movie_id`, `file_name`, `movie_name`, `actor`, `release_year`, `rating`, `file_size`, `file_path`, `status`, `tags`, `downloaded_at`). Movie ID is `SHA1(file_path)[:12]`.
+## Key Conventions
 
-**WSL paths**: Config paths use `/mnt/e/...` (WSL mounted drive). `web/app.py` has `_wsl_to_win()` to convert to `E:\...` for Windows Explorer and PowerShell operations.
+- **WSL paths**: always `/mnt/e/...`, never `E:\...`
+- **python3** not python on WSL
+- **Proxy**: `export https_proxy=http://172.24.144.1:7890`
+- **Excel**: 11 columns, tags as comma-separated string (never array in API)
+- **Excel save**: batch modify rows directly, call `save()` once. Never `update_movie()` in a loop.
+- **Classify**: only when actor field is non-empty
+- **ServerState cache**: all mutations MUST call `get_state().invalidate()`
+- **Frontend build on WSL**: `cd frontend && npx vite build`. If EIO errors, use `npm install` not rm.
+- **Cover API**: `/api/cover/<movie_id>` — extracts JAV code from movie_name, serves from `cover_dir`
+- **javbus cookies**: stored in `javbus_cookies.json` at project root
 
-**Config sections**: `path_config`, `format_config`, `backup_config`, `log_config`, `api_config`, `tag_config`, `rating_config`.
+## Data Sources
 
-**Tag system**: Two groups — `available_tags` (attribute tags like 中字, 巨乳) and `type_tags` (studio/series like S1, MOODYZ). Tags stored as comma-separated strings in Excel. Custom tags are auto-detected from usage.
+| Source | Access | Data |
+|--------|--------|------|
+| javbus.com | Proxy + cookies | Actress, tags, release_date, cover, studio |
+| javdb.com | Proxy | Actress, date |
 
-**Backup**: When `backup_config.backup_frequency` is `every_operation`, scan/classify/copy auto-backup Excel via `AppContext.maybe_backup()`.
+## Config
 
-## Key details
+`config.json` paths: `download_dir`, `classify_dir`, `backup_dir` (`/mnt/e/tools/movieTool/backups`), `cover_dir` (`/mnt/e/tools/movieTool/covers`).
+Tags: `available_tags` (attribute), `type_tags` (category), `allow_custom`, `delimiter`.
 
-- Excel is the sole persistent store — treat all Excel writes as data mutations.
-- The React SPA build output goes to `web/static/dist/` (served by Flask at `/`).
-- `requirements.txt`: openpyxl, requests, beautifulsoup4. Web app additionally needs `flask`.
-- Actress scraping targets `https://www.njavtv.art/cn/{code}` and parses `女优: <name>` from HTML.
+## Pitfalls
+
+1. WSL `rm -rf node_modules` fails with EIO on /mnt/ → use `npm install` to reinstall
+2. `npx vite build` may be rejected as "server process" → use `background=true`
+3. Cover images need `Referer` header from detail page URL
+4. javbus requires age-verify POST + driver quiz (one-time, cookies exported from browser)
+5. Tag manager: delete no confirm, dialog stays open, no auto-close
+6. Store `fetchMovies` in Zustand — don't duplicate fetch logic in hooks

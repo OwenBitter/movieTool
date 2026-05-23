@@ -36,3 +36,7 @@ Thumbs.db
 # Claude Code
 .hermes/
 *.tsbuildinfo
+
+# Covers / data
+/covers
+javbus_cookies.json

@@ -68,4 +68,8 @@ export interface MovieFilters {
   status: string;
   search: string;
   sort: SortField;
+  sizeMin: number | null;  // minimum file size in GB
+  sizeMax: number | null;  // maximum file size in GB
+  dateFrom: string;        // YYYY-MM-DD
+  dateTo: string;          // YYYY-MM-DD
 }
