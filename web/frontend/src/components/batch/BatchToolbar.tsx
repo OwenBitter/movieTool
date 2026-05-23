@@ -2,24 +2,28 @@ import { Button, Space, Checkbox } from 'antd';
 import { DeleteOutlined, FolderOutlined, CopyOutlined, FolderOpenOutlined } from '@ant-design/icons';
 import { useAppState } from '../../context/AppContext';
 import { openFiltered } from '../../api';
+import type { Movie } from '../../types';
 
 interface BatchToolbarProps {
-  totalCount: number;
+  movies: Movie[];
   onBatch: (mode: 'delete' | 'move' | 'copy') => void;
 }
 
-export function BatchToolbar({ totalCount, onBatch }: BatchToolbarProps) {
+export function BatchToolbar({ movies, onBatch }: BatchToolbarProps) {
   const { state, dispatch } = useAppState();
   const selectedCount = state.selected.size;
+  const totalCount = movies.length;
 
   if (selectedCount === 0) return null;
 
-  const allSelected = selectedCount === totalCount;
+  const allSelected = totalCount > 0 && selectedCount >= totalCount;
 
   const toggleAll = () => {
-    // In a real implementation, we'd need all movie IDs
-    // For now, clear selection
-    dispatch({ type: 'SET_SELECTED', ids: new Set() });
+    if (allSelected) {
+      dispatch({ type: 'SET_SELECTED', ids: new Set() });
+    } else {
+      dispatch({ type: 'SET_SELECTED', ids: new Set(movies.map((m) => m.movie_id)) });
+    }
   };
 
   return (

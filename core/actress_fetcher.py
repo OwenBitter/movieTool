@@ -18,7 +18,7 @@ class ActressFetcher:
     def get_actress_name(self, code):
         url = f'https://www.njavtv.art/cn/{code.lower()}'
         try:
-            r = self.session.get(url, timeout=30, verify=False)
+            r = self.session.get(url, timeout=30)
             if r.status_code != 200:
                 return None, f'页面不存在: {r.status_code}'
             soup = BeautifulSoup(r.text, 'html.parser')

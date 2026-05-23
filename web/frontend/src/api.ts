@@ -1,4 +1,4 @@
-import type { Movie, Actor, TagConfig, Stats, StatsDetail } from './types';
+import type { Movie, Actor, TagConfig, Stats, StatsDetail, PaginatedMovies } from './types';
 
 const BASE = '/api';
 
@@ -22,9 +22,9 @@ export async function fetchActors(): Promise<Actor[]> {
 }
 
 // Movies
-export async function fetchMovies(params: Record<string, string>): Promise<Movie[]> {
+export async function fetchMovies(params: Record<string, string>): Promise<PaginatedMovies> {
   const qs = new URLSearchParams(params).toString();
-  return fetchJSON<Movie[]>(`${BASE}/movies?${qs}`);
+  return fetchJSON<PaginatedMovies>(`${BASE}/movies?${qs}`);
 }
 
 export async function updateMovie(id: string, data: Partial<Pick<Movie, 'rating' | 'tags'>>): Promise<void> {

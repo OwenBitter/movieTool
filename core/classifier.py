@@ -1,6 +1,8 @@
 import os
-import shutil
 import re
+import shutil
+
+from core.utils import resolve_conflict
 
 
 class Classifier:
@@ -28,7 +30,7 @@ class Classifier:
             target_dir = os.path.join(self.classify_dir, self._sanitize_folder_name(actor))
             os.makedirs(target_dir, exist_ok=True)
             target_path = os.path.join(target_dir, os.path.basename(file_path))
-            target_path = self._resolve_conflict(target_path)
+            target_path = resolve_conflict(target_path)
             shutil.move(file_path, target_path)
             self.excel_manager.update_movie(record.get('movie_id'), {
                 'file_path': target_path,
@@ -44,13 +46,3 @@ class Classifier:
     def _sanitize_folder_name(name):
         name = name.strip()
         return re.sub(r'[\\/:*?"<>|]+', '_', name)[:120]
-
-    @staticmethod
-    def _resolve_conflict(path):
-        original = path
-        base, ext = os.path.splitext(original)
-        index = 1
-        while os.path.exists(path):
-            path = f'{base}_{index}{ext}'
-            index += 1
-        return path

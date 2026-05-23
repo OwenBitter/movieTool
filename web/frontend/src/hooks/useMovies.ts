@@ -19,7 +19,7 @@ export function useMovies() {
       params.sort = state.movies.sort;
 
       const data = await api.fetchMovies(params);
-      setMovies(data);
+      setMovies(data.movies);
     } catch (e) {
       console.error('Failed to load movies:', e);
     } finally {

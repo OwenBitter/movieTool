@@ -7,6 +7,7 @@ import json
 import os
 import shutil
 import subprocess
+import time
 from pathlib import Path
 
 # IMPORTANT: This file is designed to run from the project root:
@@ -16,6 +17,7 @@ from pathlib import Path
 
 from flask import Flask, jsonify, request, render_template, Response, send_from_directory, send_file
 from core.excel_manager import ExcelManager
+from core.tag_utils import merge_tags
 
 app = Flask(__name__)
 
@@ -29,10 +31,29 @@ def _load_config():
         return json.load(f)
 
 
+# ─── Excel cache (TTL) ──────────────────────────────────────────────────
+
+_excel_cache = None
+_cache_loaded_at = 0
+EXCEL_CACHE_TTL = 30  # seconds
+
+
 def get_excel():
+    global _excel_cache, _cache_loaded_at
+    now = time.time()
+    if _excel_cache is not None and (now - _cache_loaded_at) < EXCEL_CACHE_TTL:
+        return _excel_cache
     config = _load_config()
     excel_path = config.get('path_config', {}).get('excel_path', '/mnt/e/电影管理.xlsx')
-    return ExcelManager(excel_path)
+    _excel_cache = ExcelManager(excel_path)
+    _cache_loaded_at = now
+    return _excel_cache
+
+
+def invalidate_excel_cache():
+    global _excel_cache, _cache_loaded_at
+    _excel_cache = None
+    _cache_loaded_at = 0
 
 
 def get_tag_config():
@@ -139,6 +160,8 @@ def api_movies():
     status = request.args.get('status', '').strip()
     search = request.args.get('search', '').strip().lower()
     sort = request.args.get('sort', 'time')
+    page = request.args.get('page', type=int, default=1)
+    per_page = request.args.get('per_page', type=int, default=0)
 
     raw = filter_records(records, actor=actor, tags_filter=tags_filter,
                          rating_min=rating_min, status=status, search=search)
@@ -151,7 +174,17 @@ def api_movies():
     else:
         filtered.sort(key=lambda x: x['downloaded_at'], reverse=True)
 
-    return jsonify(filtered)
+    total = len(filtered)
+    if per_page > 0:
+        start = (page - 1) * per_page
+        filtered = filtered[start:start + per_page]
+
+    return jsonify({
+        'movies': filtered,
+        'total': total,
+        'page': page,
+        'per_page': per_page if per_page > 0 else total,
+    })
 
 
 @app.route('/api/tag-templates')
@@ -319,23 +352,44 @@ def api_stats():
     })
 
 
-@app.route('/api/stats/detail')
-def api_stats_detail():
-    """Detailed stats for the dashboard: tag distribution, rating distribution, top actors, etc."""
-    excel = get_excel()
-    records = excel.get_all_movies()
+def _parse_size_to_bytes(size_str):
+    """Parse '6.27 GB' style string to integer bytes. Returns 0 on failure."""
+    try:
+        parts = size_str.strip().split()
+        if len(parts) == 2:
+            val = float(parts[0])
+            unit = parts[1].upper()
+            multipliers = {'TB': 1024**4, 'GB': 1024**3, 'MB': 1024**2, 'KB': 1024}
+            return int(val * multipliers.get(unit, 1))
+    except (ValueError, IndexError):
+        pass
+    return 0
 
-    total = len(records)
+
+def _format_size_bytes(total_bytes):
+    """Format byte count to human-readable string."""
+    if total_bytes >= 1024**4:
+        return f"{total_bytes / (1024**4):.2f} TB"
+    if total_bytes >= 1024**3:
+        return f"{total_bytes / (1024**3):.1f} GB"
+    if total_bytes >= 1024**2:
+        return f"{total_bytes / (1024**2):.1f} MB"
+    return f"{total_bytes} B"
+
+
+def _aggregate_stats(records):
+    """Aggregate actor/tag/rating/size stats from records. Returns stats dict."""
+    from datetime import datetime, timedelta
+
     actors_count: dict[str, int] = {}
     rating_dist: dict[int, int] = {1: 0, 2: 0, 3: 0, 4: 0, 5: 0}
     tag_counts: dict[str, int] = {}
     total_size_bytes = 0
     classified = rated = tagged = 0
     recent_7d = 0
-    import datetime
 
-    now = datetime.datetime.now()
-    week_ago = now - datetime.timedelta(days=7)
+    now = datetime.now()
+    week_ago = now - timedelta(days=7)
 
     for r in records:
         actor = r.get('actor', '').strip()
@@ -360,70 +414,58 @@ def api_stats_detail():
         if r.get('status') == 'classified':
             classified += 1
 
-        # Size: parse "6.27 GB" format
-        size_str = r.get('file_size', '0')
-        try:
-            parts = size_str.split()
-            if len(parts) == 2:
-                val = float(parts[0])
-                unit = parts[1].upper()
-                if unit == 'TB':
-                    total_size_bytes += int(val * 1024 * 1024 * 1024 * 1024)
-                elif unit == 'GB':
-                    total_size_bytes += int(val * 1024 * 1024 * 1024)
-                elif unit == 'MB':
-                    total_size_bytes += int(val * 1024 * 1024)
-                elif unit == 'KB':
-                    total_size_bytes += int(val * 1024)
-                else:
-                    total_size_bytes += int(val)
-        except (ValueError, IndexError):
-            pass
+        total_size_bytes += _parse_size_to_bytes(r.get('file_size', '0'))
 
-        # Recent downloads
         dl = r.get('downloaded_at', '')
         if dl:
             try:
-                dl_date = datetime.datetime.strptime(dl[:10], '%Y-%m-%d')
+                dl_date = datetime.strptime(dl[:10], '%Y-%m-%d')
                 if dl_date >= week_ago:
                     recent_7d += 1
             except ValueError:
                 pass
 
-    # Top 10 actors
-    top_actors = sorted(actors_count.items(), key=lambda x: -x[1])[:10]
-    top_actors_list = [{'name': name, 'count': count} for name, count in top_actors]
+    top_actors_list = [{'name': name, 'count': count}
+                       for name, count in
+                       sorted(actors_count.items(), key=lambda x: -x[1])[:10]]
 
-    # Format total size
-    if total_size_bytes >= 1024 * 1024 * 1024 * 1024:
-        total_size = f"{total_size_bytes / (1024*1024*1024*1024):.2f} TB"
-    elif total_size_bytes >= 1024 * 1024 * 1024:
-        total_size = f"{total_size_bytes / (1024*1024*1024):.1f} GB"
-    elif total_size_bytes >= 1024 * 1024:
-        total_size = f"{total_size_bytes / (1024*1024):.1f} MB"
-    else:
-        total_size = f"{total_size_bytes} B"
+    sorted_tags = dict(sorted(tag_counts.items(), key=lambda x: -x[1])[:20])
 
-    # Average rating
     rated_records = [int(r.get('rating', '0')) for r in records
                      if r.get('rating', '0') and r.get('rating', '0') != '0']
     avg_rating = round(sum(rated_records) / len(rated_records), 1) if rated_records else 0
 
-    # Sort tag_counts by count descending
-    sorted_tags = dict(sorted(tag_counts.items(), key=lambda x: -x[1])[:20])
-
-    return jsonify({
-        'total': total,
+    return {
         'classified': classified,
-        'unclassified': total - classified,
         'rated': rated,
         'tagged': tagged,
+        'recent_downloads': recent_7d,
         'top_actors': top_actors_list,
         'rating_distribution': rating_dist,
         'tag_counts': sorted_tags,
-        'total_size': total_size,
+        'total_size_bytes': total_size_bytes,
         'avg_rating': avg_rating,
-        'recent_downloads': recent_7d,
+    }
+
+
+@app.route('/api/stats/detail')
+def api_stats_detail():
+    excel = get_excel()
+    records = excel.get_all_movies()
+    stats = _aggregate_stats(records)
+
+    return jsonify({
+        'total': len(records),
+        'classified': stats['classified'],
+        'unclassified': len(records) - stats['classified'],
+        'rated': stats['rated'],
+        'tagged': stats['tagged'],
+        'top_actors': stats['top_actors'],
+        'rating_distribution': stats['rating_distribution'],
+        'tag_counts': stats['tag_counts'],
+        'total_size': _format_size_bytes(stats['total_size_bytes']),
+        'avg_rating': stats['avg_rating'],
+        'recent_downloads': stats['recent_downloads'],
     })
 
 
@@ -522,44 +564,43 @@ def open_folder():
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
-@app.route('/api/open-filtered', methods=['POST'])
-def open_filtered():
-    """Collect filtered/selected files via symlinks into one folder, open in Explorer."""
-    data = request.get_json() or {}
-    ids = data.get('ids', [])
-
-    excel = get_excel()
-    files = []  # list of (wsl_path, display_name)
-
-    if ids:
-        for mid in ids:
-            row = excel.find_row_by_id(mid)
-            if row:
-                fp = (row[excel._get_column_index('file_path')].value or '').strip()
-                fn = (row[excel._get_column_index('file_name')].value or '').strip()
-                if fp and os.path.exists(fp):
-                    files.append((fp, fn))
-    else:
-        actor = data.get('actor', '').strip()
-        tags_filter = [t.strip() for t in data.get('tags', '').split(',') if t.strip()]
-        rating_min = data.get('rating_min', 0)
-        status = data.get('status', '').strip()
-        search = (data.get('search', '') or '').strip().lower()
-
-        records = excel.get_all_movies()
-        filtered = filter_records(records, actor=actor, tags_filter=tags_filter,
-                                  rating_min=rating_min, status=status, search=search)
-        for r in filtered:
-            fp = (r.get('file_path') or '').strip()
-            fn = (r.get('file_name') or '').strip()
+def _collect_files_by_ids(excel, ids):
+    """Collect (wsl_path, display_name) for given movie IDs."""
+    files = []
+    fp_idx = excel._get_column_index('file_path')
+    fn_idx = excel._get_column_index('file_name')
+    for mid in ids:
+        row = excel.find_row_by_id(mid)
+        if row:
+            fp = (row[fp_idx].value or '').strip()
+            fn = (row[fn_idx].value or '').strip()
             if fp and os.path.exists(fp):
                 files.append((fp, fn))
+    return files
 
-    if not files:
-        return jsonify({'success': False, 'error': '没有匹配的文件'}), 404
 
-    # Create/clear the temp folder
-    link_dir = '/mnt/e/筛选结果'
+def _collect_files_by_filter(excel, data):
+    """Collect files matching filter criteria in data dict."""
+    actor = data.get('actor', '').strip()
+    tags_filter = [t.strip() for t in data.get('tags', '').split(',') if t.strip()]
+    rating_min = data.get('rating_min', 0)
+    status = data.get('status', '').strip()
+    search = (data.get('search', '') or '').strip().lower()
+
+    records = excel.get_all_movies()
+    filtered = filter_records(records, actor=actor, tags_filter=tags_filter,
+                              rating_min=rating_min, status=status, search=search)
+    files = []
+    for r in filtered:
+        fp = (r.get('file_path') or '').strip()
+        fn = (r.get('file_name') or '').strip()
+        if fp and os.path.exists(fp):
+            files.append((fp, fn))
+    return files
+
+
+def _create_shortcuts(files, link_dir):
+    """Create .lnk shortcuts in link_dir via PowerShell COM. Returns count created."""
     if os.path.exists(link_dir):
         for f in os.listdir(link_dir):
             try:
@@ -569,7 +610,6 @@ def open_filtered():
     else:
         os.makedirs(link_dir, exist_ok=True)
 
-    # Create .lnk shortcuts via PowerShell (no admin required)
     created = 0
     for src_wsl, fname in files:
         src_win = _wsl_to_win(src_wsl)
@@ -577,7 +617,6 @@ def open_filtered():
         link_wsl = os.path.join(link_dir, link_name)
         link_win = _wsl_to_win(link_wsl)
 
-        # Handle duplicate names
         base = os.path.splitext(fname)[0]
         counter = 1
         while os.path.exists(link_wsl):
@@ -586,11 +625,12 @@ def open_filtered():
             link_win = _wsl_to_win(link_wsl)
             counter += 1
 
-        # PowerShell COM: create shortcut to original file
+        safe_link_win = link_win.replace("'", "''")
+        safe_src_win = src_win.replace("'", "''")
         ps_cmd = (
             f"$ws=New-Object -ComObject WScript.Shell;"
-            f"$sc=$ws.CreateShortcut('{link_win}');"
-            f"$sc.TargetPath='{src_win}';"
+            f"$sc=$ws.CreateShortcut('{safe_link_win}');"
+            f"$sc.TargetPath='{safe_src_win}';"
             f"$sc.Save()"
         )
         try:
@@ -603,8 +643,25 @@ def open_filtered():
                 created += 1
         except Exception:
             pass
+    return created
 
-    # Open the single folder
+
+@app.route('/api/open-filtered', methods=['POST'])
+def open_filtered():
+    """Collect filtered/selected files as shortcuts into one folder, open in Explorer."""
+    data = request.get_json() or {}
+    ids = data.get('movie_ids') or data.get('ids', [])
+    ids = ids[:100]
+
+    excel = get_excel()
+    files = _collect_files_by_ids(excel, ids) if ids else _collect_files_by_filter(excel, data)
+
+    if not files:
+        return jsonify({'success': False, 'error': '没有匹配的文件'}), 404
+
+    link_dir = '/mnt/e/筛选结果'
+    created = _create_shortcuts(files, link_dir)
+
     win_link_dir = _wsl_to_win(link_dir)
     try:
         subprocess.Popen(['explorer.exe', win_link_dir],
@@ -630,7 +687,8 @@ def _resolve_movie(excel, movie_id):
 def batch_delete():
     """Delete movies: remove files from disk + remove rows from Excel."""
     data = request.get_json() or {}
-    ids = data.get('ids', [])
+    ids = data.get('movie_ids') or data.get('ids', [])
+    ids = ids[:100]
     if not ids:
         return jsonify({'success': False, 'error': '没有选中的影片'}), 400
 
@@ -639,26 +697,20 @@ def batch_delete():
     deleted_rows = 0
     errors = []
 
-    # Collect rows to delete (process in reverse to preserve row indices)
-    rows_to_delete = []
+    # Collect rows to delete
     for mid in ids:
         row, fp = _resolve_movie(excel, mid)
         if not row:
             errors.append({'movie_id': mid, 'error': '未找到'})
             continue
-        rows_to_delete.append((row, fp))
-
-    # Delete files first, then remove rows
-    for row, fp in rows_to_delete:
+        # Delete file if exists
         if fp and os.path.exists(fp):
             try:
                 os.remove(fp)
                 deleted_files += 1
             except OSError as e:
                 errors.append({'file': fp, 'error': str(e)})
-        # Remove row from sheet
-        row_num = row[0].row  # 1-indexed row number
-        excel.sheet.delete_rows(row_num)
+        excel.delete_movie(mid)
         deleted_rows += 1
 
     excel.save()
@@ -674,8 +726,9 @@ def batch_delete():
 def batch_move():
     """Move selected movie files to a destination directory."""
     data = request.get_json() or {}
-    ids = data.get('ids', [])
-    dest = (data.get('dest', '') or '').strip()
+    ids = data.get('movie_ids') or data.get('ids', [])
+    ids = ids[:100]
+    dest = (data.get('dest') or data.get('destination', '')).strip()
 
     if not ids:
         return jsonify({'success': False, 'error': '没有选中的影片'}), 400
@@ -728,8 +781,9 @@ def batch_move():
 def batch_copy():
     """Copy selected movie files to a destination directory (files stay in place)."""
     data = request.get_json() or {}
-    ids = data.get('ids', [])
-    dest = (data.get('dest', '') or '').strip()
+    ids = data.get('movie_ids') or data.get('ids', [])
+    ids = ids[:100]
+    dest = (data.get('dest') or data.get('destination', '')).strip()
 
     if not ids:
         return jsonify({'success': False, 'error': '没有选中的影片'}), 400
@@ -773,23 +827,13 @@ def batch_copy():
     })
 
 
-# ─── Batch Tag Operations ──────────────────────────────────────────────
-
-def _merge_tags(existing_str, add_tags, remove_tags=None):
-    """Merge tags: existing comma-separated string + add list - remove list."""
-    current = set(t.strip() for t in existing_str.split(',') if t.strip())
-    if add_tags:
-        current.update(t.strip() for t in add_tags if t.strip())
-    if remove_tags:
-        current.difference_update(t.strip() for t in remove_tags if t.strip())
-    return ','.join(sorted(current))
-
 
 @app.route('/api/movies/batch/tags/add', methods=['POST'])
 def batch_tags_add():
     """Add tags to selected movies (append, don't remove existing)."""
     data = request.get_json() or {}
-    ids = data.get('ids', [])
+    ids = data.get('movie_ids') or data.get('ids', [])
+    ids = ids[:100]
     tags_to_add = data.get('tags', [])
     if not ids:
         return jsonify({'success': False, 'error': '没有选中的影片'}), 400
@@ -803,7 +847,7 @@ def batch_tags_add():
         if not row:
             continue
         existing = (row[excel._get_column_index('tags')].value or '').strip()
-        new_tags = _merge_tags(existing, tags_to_add)
+        new_tags = merge_tags(existing, tags_to_add)
         row[excel._get_column_index('tags')].value = new_tags
         updated += 1
 
@@ -815,7 +859,8 @@ def batch_tags_add():
 def batch_tags_set():
     """Replace tags on selected movies entirely."""
     data = request.get_json() or {}
-    ids = data.get('ids', [])
+    ids = data.get('movie_ids') or data.get('ids', [])
+    ids = ids[:100]
     tags = data.get('tags', [])
     if not ids:
         return jsonify({'success': False, 'error': '没有选中的影片'}), 400
@@ -839,7 +884,8 @@ def batch_tags_set():
 def batch_tags_remove():
     """Remove specified tags from selected movies."""
     data = request.get_json() or {}
-    ids = data.get('ids', [])
+    ids = data.get('movie_ids') or data.get('ids', [])
+    ids = ids[:100]
     tags_to_remove = data.get('tags', [])
     if not ids:
         return jsonify({'success': False, 'error': '没有选中的影片'}), 400
@@ -853,7 +899,7 @@ def batch_tags_remove():
         if not row:
             continue
         existing = (row[excel._get_column_index('tags')].value or '').strip()
-        new_tags = _merge_tags(existing, [], tags_to_remove)
+        new_tags = merge_tags(existing, [], tags_to_remove)
         row[excel._get_column_index('tags')].value = new_tags
         updated += 1
 
@@ -875,7 +921,7 @@ def play_movie(movie_id):
 
     win_path = _wsl_to_win(fp)
     try:
-        subprocess.Popen(['cmd.exe', '/c', 'start', '', win_path],
+        subprocess.Popen(['explorer.exe', win_path],
                          stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         return jsonify({'success': True})
     except Exception as e:
@@ -918,4 +964,4 @@ def api_thumb(movie_id):
 
 if __name__ == '__main__':
     print('🎬 电影分类浏览器启动: http://localhost:5000')
-    app.run(host='0.0.0.0', port=5000, debug=True)
+    app.run(host='127.0.0.1', port=5000, debug=os.environ.get('FLASK_DEBUG', '').lower() == 'true')

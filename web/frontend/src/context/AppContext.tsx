@@ -24,6 +24,7 @@ type AppAction =
   | { type: 'SET_SEARCH'; search: string }
   | { type: 'SET_SORT'; sort: SortField }
   | { type: 'SET_VIEW_MODE'; mode: ViewMode }
+  | { type: 'TOGGLE_VIEW' }
   | { type: 'TOGGLE_FILTER_PANEL' }
   | { type: 'SET_SELECTED'; ids: Set<string> }
   | { type: 'CLEAR_FILTERS' }
@@ -68,6 +69,8 @@ function reducer(state: AppState, action: AppAction): AppState {
       return { ...state, movies: { ...state.movies, sort: action.sort } };
     case 'SET_VIEW_MODE':
       return { ...state, viewMode: action.mode };
+    case 'TOGGLE_VIEW':
+      return { ...state, viewMode: state.viewMode === 'card' ? 'table' : 'card' };
     case 'TOGGLE_FILTER_PANEL':
       return { ...state, filterPanelOpen: !state.filterPanelOpen };
     case 'SET_SELECTED':

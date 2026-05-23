@@ -1,5 +1,4 @@
-import { LoadingOutlined } from '@ant-design/icons';
-import { Spin } from 'antd';
+import { Skeleton } from 'antd';
 import type { Movie } from '../../types';
 import { MovieCard } from './MovieCard';
 import { useAppState } from '../../context/AppContext';
@@ -14,8 +13,12 @@ export function MovieGridView({ movies, onUpdated }: MovieGridViewProps) {
 
   if (state.loading) {
     return (
-      <div style={{ textAlign: 'center', padding: 60 }}>
-        <Spin indicator={<LoadingOutlined style={{ fontSize: 32, color: '#e8b84b' }} />} />
+      <div className="movie-grid">
+        {Array.from({ length: 8 }).map((_, i) => (
+          <div key={i} className="movie-card" style={{ padding: 16 }}>
+            <Skeleton active paragraph={{ rows: 2 }} title={{ width: '60%' }} />
+          </div>
+        ))}
       </div>
     );
   }
@@ -23,7 +26,9 @@ export function MovieGridView({ movies, onUpdated }: MovieGridViewProps) {
   return (
     <div className="movie-grid">
       {movies.map((m) => (
-        <MovieCard key={m.movie_id} movie={m} onUpdated={onUpdated} />
+        <div key={m.movie_id} className="movie-card-wrapper" style={{ contentVisibility: 'auto', containIntrinsicSize: 'auto 280px' }}>
+          <MovieCard movie={m} onUpdated={onUpdated} />
+        </div>
       ))}
     </div>
   );

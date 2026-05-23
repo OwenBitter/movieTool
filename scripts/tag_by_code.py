@@ -16,6 +16,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from core.config_manager import ConfigManager
 from core.excel_manager import ExcelManager
+from core.tag_utils import merge_tags
 
 # ── Code prefix → type tags ──────────────────────────────────────────────
 # Prefixes are matched case-insensitively. Tags are appended (not replaced).
@@ -207,13 +208,6 @@ def extract_code_prefix(movie_name: str) -> str | None:
             return token
 
     return None
-
-
-def merge_tags(existing_str: str, add_tags: list[str]) -> str:
-    """Merge tags: add new ones, keep existing, deduplicate."""
-    current = set(t.strip() for t in existing_str.split(',') if t.strip())
-    current.update(t.strip() for t in add_tags if t.strip())
-    return ','.join(sorted(current))
 
 
 def main():

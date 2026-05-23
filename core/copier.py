@@ -1,6 +1,8 @@
 import os
 import shutil
 
+from core.utils import resolve_conflict
+
 
 class Copier:
     def __init__(self, config, excel_manager, logger=None):
@@ -25,7 +27,7 @@ class Copier:
                 if self.logger:
                     self.logger.debug(f'目标文件已存在且相同，跳过: {target_path}')
                 continue
-            target_path = self._resolve_conflict(target_path)
+            target_path = resolve_conflict(target_path)
             shutil.copy2(source_path, target_path)
             copied += 1
             if self.logger:
@@ -41,14 +43,3 @@ class Copier:
             return os.path.getsize(source_path) == os.path.getsize(target_path)
         except OSError:
             return False
-
-    @staticmethod
-    def _resolve_conflict(path):
-        if not os.path.exists(path):
-            return path
-        base, ext = os.path.splitext(path)
-        index = 1
-        while os.path.exists(path):
-            path = f'{base}_{index}{ext}'
-            index += 1
-        return path

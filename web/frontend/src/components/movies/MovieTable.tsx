@@ -1,9 +1,10 @@
-import { Table, Tag, Rate, Button, Tooltip, Checkbox, Space, message } from 'antd';
+import { Table, Tag, Rate, Button, Tooltip, Checkbox, Space } from 'antd';
 import { FolderOpenOutlined, PlayCircleOutlined } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import type { Movie } from '../../types';
 import { useAppState } from '../../context/AppContext';
-import { updateMovie, openFolder, playMovie } from '../../api';
+import { openFolder, playMovie } from '../../api';
+import { useRating } from '../../hooks/useRating';
 
 interface MovieTableProps {
   movies: Movie[];
@@ -12,22 +13,13 @@ interface MovieTableProps {
 
 export function MovieTable({ movies, onUpdated }: MovieTableProps) {
   const { state, dispatch } = useAppState();
+  const { handleRatingChange } = useRating({ onUpdated });
 
   const rowSelection = {
     selectedRowKeys: [...state.selected],
     onChange: (keys: React.Key[]) => {
       dispatch({ type: 'SET_SELECTED', ids: new Set(keys as string[]) });
     },
-  };
-
-  const handleRatingChange = async (id: string, value: number) => {
-    try {
-      await updateMovie(id, { rating: value });
-      message.success('评分已保存');
-      onUpdated();
-    } catch (e) {
-      message.error('评分保存失败');
-    }
   };
 
   const columns: ColumnsType<Movie> = [

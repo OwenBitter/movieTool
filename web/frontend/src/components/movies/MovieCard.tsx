@@ -4,6 +4,7 @@ import { useState } from 'react';
 import type { Movie } from '../../types';
 import { useAppState } from '../../context/AppContext';
 import { updateMovie, addTag, openFolder, playMovie } from '../../api';
+import { useRating } from '../../hooks/useRating';
 
 interface MovieCardProps {
   movie: Movie;
@@ -14,6 +15,7 @@ export function MovieCard({ movie, onUpdated }: MovieCardProps) {
   const { state, dispatch } = useAppState();
   const [editing, setEditing] = useState(false);
   const [tagInput, setTagInput] = useState('');
+  const { handleRatingChange } = useRating({ onUpdated });
 
   const tagConfig = state.tagsConfig;
   const allTags = tagConfig
@@ -39,7 +41,7 @@ export function MovieCard({ movie, onUpdated }: MovieCardProps) {
       await updateMovie(movie.movie_id, { tags: newTags.join(',') });
       message.success('标签已更新');
       onUpdated();
-    } catch (e) {
+    } catch {
       message.error('标签更新失败');
     }
   };
@@ -48,7 +50,6 @@ export function MovieCard({ movie, onUpdated }: MovieCardProps) {
     const name = tagInput.trim();
     if (!name) return;
     try {
-      // Add to library if custom
       if (!allTags.includes(name) && tagConfig?.allow_custom) {
         await addTag(name, 'type');
       }
@@ -58,18 +59,8 @@ export function MovieCard({ movie, onUpdated }: MovieCardProps) {
       setTagInput('');
       setEditing(false);
       onUpdated();
-    } catch (e) {
+    } catch {
       message.error('操作失败');
-    }
-  };
-
-  const handleRatingChange = async (v: number) => {
-    try {
-      await updateMovie(movie.movie_id, { rating: v });
-      message.success('评分已保存');
-      onUpdated();
-    } catch (e) {
-      message.error('评分保存失败');
     }
   };
 
@@ -91,7 +82,7 @@ export function MovieCard({ movie, onUpdated }: MovieCardProps) {
         {movie.actor || '未知演员'} · {movie.release_year || '未知年份'}
       </div>
       <div className="card-meta">
-        <Rate value={movie.rating} onChange={handleRatingChange} style={{ fontSize: 16 }} />
+        <Rate value={movie.rating} onChange={(v) => handleRatingChange(movie.movie_id, v)} style={{ fontSize: 16 }} />
         <span>{movie.file_size}</span>
       </div>
       <div className="card-tags">

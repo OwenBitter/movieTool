@@ -51,6 +51,7 @@ class ExcelManager:
         self.wb = load_workbook(self.excel_path)
         self.sheet = self.wb.active
         self._build_label_mapping()
+        self._build_row_index()
 
     def _build_label_mapping(self):
         """Map Excel header row (Chinese labels) back to internal English keys."""
@@ -134,12 +135,32 @@ class ExcelManager:
                 return row
         return None
 
-    def find_row_by_id(self, movie_id):
+    def _build_row_index(self):
+        """Build O(1) lookup: movie_id → 1-based row number."""
+        self._row_index: dict[str, int] = {}
         mid_idx = self._get_column_index('movie_id')
         for row in self.sheet.iter_rows(min_row=2):
-            if self._normalize(row[mid_idx].value) == movie_id:
-                return row
-        return None
+            mid = self._normalize(row[mid_idx].value)
+            if mid:
+                self._row_index[mid] = row[0].row
+
+    def _invalidate_row_index(self):
+        self._build_row_index()
+
+    def find_row_by_id(self, movie_id):
+        row_num = self._row_index.get(movie_id)
+        if row_num is None:
+            return None
+        return self.sheet[row_num]
+
+    def delete_movie(self, movie_id):
+        """Delete a movie row by ID. Returns True if deleted."""
+        row_num = self._row_index.get(movie_id)
+        if row_num is None:
+            return False
+        self.sheet.delete_rows(row_num)
+        self._invalidate_row_index()
+        return True
 
     def get_all_movies(self):
         """Return list of dicts with English keys, mapped from Excel columns."""
@@ -171,7 +192,7 @@ class ExcelManager:
             pass
         return datetime.now().strftime('%Y-%m-%d %H:%M:%S')
 
-    def add_or_update_movie(self, movie_info):
+    def add_or_update_movie(self, movie_info, save=True):
         file_path = os.path.abspath(movie_info.get('file_path', ''))
         if not file_path:
             raise ValueError('movie_info 必须包含 file_path。')
@@ -187,23 +208,22 @@ class ExcelManager:
             data['downloaded_at'] = self._get_file_download_time(file_path)
 
         if row:
-            # Update existing row
             for key in self.HEADERS:
                 if data[key]:
                     col_idx = self._get_column_index(key)
                     row[col_idx].value = data[key]
-            # Preserve downloaded_at for existing rows unless explicitly updated
-            if not movie_info.get('downloaded_at'):
-                dl_idx = self._get_column_index('downloaded_at')
-                # Don't overwrite — keep existing value
-                pass
-            self.save()
+            if save:
+                self.save()
             return 'updated'
 
         # New row
         sheet_row = [data.get(key, '') for key in self.HEADERS]
         self.sheet.append(sheet_row)
-        self.save()
+        if save:
+            self._invalidate_row_index()
+            self.save()
+        else:
+            self._row_index[data['movie_id']] = self.sheet.max_row
         return 'added'
 
     def update_movie(self, movie_id, update_data):

@@ -25,7 +25,7 @@ class Scanner:
                 total += 1
                 file_path = os.path.abspath(os.path.join(root, name))
                 movie_info = self._build_movie_info(file_path)
-                result = self.excel_manager.add_or_update_movie(movie_info)
+                result = self.excel_manager.add_or_update_movie(movie_info, save=False)
                 if result == 'added':
                     added += 1
                 elif result == 'updated':
@@ -33,6 +33,9 @@ class Scanner:
                 if self.logger:
                     self.logger.debug(f'扫描到文件: {file_path} => {result}')
 
+        # Single save after all files processed
+        self.excel_manager.save()
+        self.excel_manager._invalidate_row_index()
         return total, added, updated
 
     def _build_movie_info(self, file_path):

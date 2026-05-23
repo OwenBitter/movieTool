@@ -37,6 +37,11 @@ export interface Stats {
 }
 
 export interface StatsDetail {
+  total: number;
+  classified: number;
+  unclassified: number;
+  rated: number;
+  tagged: number;
   top_actors: Actor[];
   rating_distribution: Record<number, number>;
   tag_counts: Record<string, number>;
@@ -44,6 +49,13 @@ export interface StatsDetail {
   avg_rating: number;
   recent_downloads: number;
   duplicate_count: number;
+}
+
+export interface PaginatedMovies {
+  movies: Movie[];
+  total: number;
+  page: number;
+  per_page: number;
 }
 
 export type SortField = 'time' | 'rating' | 'name';
