@@ -13,12 +13,15 @@ venv/
 .claude/
 
 # Node / React
-web/frontend/node_modules/
-web/frontend/dist/
+frontend/node_modules/
+frontend/dist/
 web/static/dist/
 
 # User config (contains personal paths)
 config.json
+
+# Data (local Excel database)
+电影管理.xlsx
 
 # Backups
 *.bak

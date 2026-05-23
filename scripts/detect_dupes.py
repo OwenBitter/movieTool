@@ -49,7 +49,7 @@ def main():
         excel_path = args.excel
     else:
         config = ConfigManager()
-        excel_path = config.get('path_config', {}).get('excel_path', '/mnt/e/电影管理.xlsx')
+        excel_path = config.get('path_config', {}).get('excel_path', './电影管理.xlsx')
 
     excel = ExcelManager(excel_path)
     records = excel.get_all_movies()
@@ -84,9 +84,69 @@ def main():
             print(f"     │  📁 {file_path}")
         print()
 
-    if args.interactive:
-        print("交互模式暂未实现，请手动处理。")
-        print("建议：保留文件较大的版本，删除较小者。")
+    if args.interactive and dupes:
+        total_deleted = _interactive_dedup(dupes, excel)
+        excel.save()
+        print(f"\n✅ 已删除 {total_deleted} 个重复文件。")
+
+
+def _interactive_dedup(dupes: dict, excel) -> int:
+    """Interactive mode: user chooses which duplicate to keep per group."""
+    deleted = 0
+    for code, entries in sorted(dupes.items()):
+        print(f"\n{'='*60}")
+        print(f"📼 番号: {code} ({len(entries)} 个重复)")
+        print(f"{'='*60}")
+        for i, e in enumerate(entries, 1):
+            file_name = e.get('file_name', '?')
+            file_size = e.get('file_size', '?')
+            file_path = e.get('file_path', '?')
+            rating = e.get('rating', '0')
+            status = e.get('status', '?')
+            tags = e.get('tags', '')
+            print(f"  [{i}] {file_name}")
+            print(f"      大小: {file_size} | 评分: {rating} | 状态: {status}")
+            if tags:
+                print(f"      标签: {tags}")
+            print(f"      路径: {file_path}")
+
+        print(f"\n  保留哪个？输入编号 1-{len(entries)}，或 s=跳过: ", end='')
+        try:
+            choice = input().strip().lower()
+        except (EOFError, KeyboardInterrupt):
+            print("\n已取消。")
+            break
+
+        if choice == 's' or not choice:
+            print("  ⏭ 已跳过。")
+            continue
+
+        try:
+            keep_idx = int(choice) - 1
+            if keep_idx < 0 or keep_idx >= len(entries):
+                print("  ❌ 无效编号，已跳过。")
+                continue
+        except ValueError:
+            print("  ❌ 无效输入，已跳过。")
+            continue
+
+        # Delete all except the chosen one
+        for i, e in enumerate(entries):
+            if i == keep_idx:
+                continue
+            fp = e.get('file_path', '')
+            mid = e.get('movie_id', '')
+            if fp and os.path.exists(fp):
+                try:
+                    os.remove(fp)
+                    print(f"  🗑 已删除文件: {os.path.basename(fp)}")
+                except OSError as exc:
+                    print(f"  ❌ 删除文件失败: {exc}")
+            if mid:
+                excel.delete_movie(mid)
+                deleted += 1
+
+    return deleted
 
 
 if __name__ == '__main__':

@@ -145,7 +145,7 @@ def migrate(src_path, dst_path=None):
 
 
 if __name__ == '__main__':
-    src = '/mnt/e/电影管理.xlsx'
+    src = './电影管理.xlsx'
     
     # Backup first
     backup_dir = '/mnt/e/电影备份'

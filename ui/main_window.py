@@ -105,7 +105,8 @@ class MainWindow:
         progress_frame.pack(fill=tk.X, pady=10)
         ttk.Label(progress_frame, text='进度:').pack(side=tk.LEFT)
         self.progress_var = tk.DoubleVar(value=0)
-        ttk.Progressbar(progress_frame, variable=self.progress_var, maximum=100).pack(fill=tk.X, expand=True, side=tk.LEFT, padx=6)
+        self.progress_bar = ttk.Progressbar(progress_frame, variable=self.progress_var, maximum=100)
+        self.progress_bar.pack(fill=tk.X, expand=True, side=tk.LEFT, padx=6)
         ttk.Button(progress_frame, text='清除日志', command=self._clear_log).pack(side=tk.RIGHT)
 
     def _build_log_panel(self, parent):
@@ -132,14 +133,28 @@ class MainWindow:
 
     def _set_progress(self, value):
         self.progress_var.set(value)
+        if value > 0:
+            self.progress_bar.configure(mode='determinate')
         self.root.update_idletasks()
+
+    def _pulse_progress(self, stop_event):
+        """Animate indeterminate progress while task runs."""
+        self.root.after(0, lambda: self.progress_bar.configure(mode='indeterminate'))
+        self.root.after(0, self.progress_bar.start)
+        while not stop_event.is_set():
+            stop_event.wait(0.1)
+        self.root.after(0, self.progress_bar.stop)
+        self.root.after(0, lambda: self.progress_bar.configure(mode='determinate'))
 
     def _run_task(self, target):
         self._set_status('执行中...')
         self._append_log('开始：' + target.__name__)
-        self._set_progress(10)
+        self._set_progress(0)
         self._disable_buttons(True)
-        thread = threading.Thread(target=self._task_wrapper, args=(target,), daemon=True)
+        stop_event = threading.Event()
+        pulse_thread = threading.Thread(target=self._pulse_progress, args=(stop_event,), daemon=True)
+        pulse_thread.start()
+        thread = threading.Thread(target=self._task_wrapper, args=(target, stop_event), daemon=True)
         thread.start()
 
     def _disable_buttons(self, disabled):
@@ -153,13 +168,14 @@ class MainWindow:
 
         _recurse(self.root)
 
-    def _task_wrapper(self, target):
+    def _task_wrapper(self, target, stop_event):
         try:
             result = target()
             self.root.after(0, lambda: self._append_log(result if result is not None else '操作完成。'))
         except Exception as exc:
             self.root.after(0, lambda: self._append_log('错误：' + str(exc)))
         finally:
+            stop_event.set()
             self.root.after(0, lambda: self._set_status('完成'))
             self.root.after(0, lambda: self._set_progress(100))
             self.root.after(0, lambda: self._disable_buttons(False))

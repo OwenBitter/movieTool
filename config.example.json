@@ -1,10 +1,10 @@
 {
   "path_config": {
-    "download_dir": "/mnt/e/BaiduNetdiskDownload/日本",
-    "classify_dir": "/mnt/e/BaiduNetdiskDownload/电影分类",
-    "excel_path": "/mnt/e/电影管理.xlsx",
-    "copy_target_dir": "/mnt/e/",
-    "backup_dir": "/mnt/e/电影备份"
+    "download_dir": "/path/to/downloads",
+    "classify_dir": "/path/to/classified",
+    "excel_path": "./电影管理.xlsx",
+    "copy_target_dir": "/path/to/copy_target",
+    "backup_dir": "./backups"
   },
   "format_config": {
     "supported_formats": [
@@ -27,7 +27,7 @@
     "log_retention_days": 30
   },
   "api_config": {
-    "movie_metadata_api": "https://api.example.com/movie/metadata",
+    "movie_metadata_api": "",
     "api_timeout": 10,
     "api_retry_count": 3
   },

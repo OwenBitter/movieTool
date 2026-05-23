@@ -22,8 +22,8 @@ python main.py show --status classified
 python web/app.py            # starts on http://localhost:5000
 
 # React frontend dev
-cd web/frontend && npm run dev    # Vite dev server
-cd web/frontend && npm run build  # TypeScript + Vite production build → web/static/dist/
+cd frontend && npm run dev    # Vite dev server
+cd frontend && npm run build  # TypeScript + Vite production build → web/static/dist/
 ```
 
 ## Architecture
@@ -44,7 +44,8 @@ ui/
   main_window.py     # Tkinter GUI with tabs: config, tools, logs
 web/
   app.py             # Flask API server (20+ endpoints) — serves React SPA + REST API, no DB
-  frontend/          # React 18 + TypeScript + AntD 5 + Vite (SPA)
+  static/dist/       # Built React SPA (served at /)
+frontend/            # React 18 + TypeScript + AntD 5 + Zustand + Vite
 ```
 
 **Excel as database**: `excel_manager.py` uses a Chinese header row for display but maps everything to English internal keys (`movie_id`, `file_name`, `movie_name`, `actor`, `release_year`, `rating`, `file_size`, `file_path`, `status`, `tags`, `downloaded_at`). Movie ID is `SHA1(file_path)[:12]`.

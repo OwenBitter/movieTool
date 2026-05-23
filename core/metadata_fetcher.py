@@ -1,3 +1,12 @@
+"""
+Movie metadata fetcher.
+
+Configure `movie_metadata_api` in config.json to a real API endpoint.
+The API is expected to accept `?title=<name>` and return JSON with fields:
+title, actor, director, release_year, genre, rating.
+Leave empty to disable.
+"""
+
 import requests
 
 

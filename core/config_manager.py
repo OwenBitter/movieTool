@@ -24,7 +24,7 @@ class ConfigManager:
             'log_retention_days': 30
         },
         'api_config': {
-            'movie_metadata_api': 'https://api.example.com/movie/metadata',
+            'movie_metadata_api': '',
             'api_timeout': 10,
             'api_retry_count': 3
         }

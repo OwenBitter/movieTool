@@ -7,6 +7,7 @@ import json
 import os
 import shutil
 import subprocess
+import tempfile
 import time
 from pathlib import Path
 
@@ -18,6 +19,7 @@ from pathlib import Path
 from flask import Flask, jsonify, request, render_template, Response, send_from_directory, send_file
 from core.excel_manager import ExcelManager
 from core.tag_utils import merge_tags
+from core.utils import format_file_size, parse_size_to_bytes
 
 app = Flask(__name__)
 
@@ -27,8 +29,14 @@ DIST_DIR = str(Path(__file__).resolve().parent / 'static' / 'dist')
 
 def _load_config():
     """Load config.json on demand (supports runtime updates)."""
-    with open(CONFIG_PATH, 'r', encoding='utf-8') as f:
-        return json.load(f)
+    try:
+        with open(CONFIG_PATH, 'r', encoding='utf-8') as f:
+            return json.load(f)
+    except (FileNotFoundError, json.JSONDecodeError) as e:
+        return {
+            'path_config': {'excel_path': './电影管理.xlsx', 'backup_dir': './backups'},
+            'tag_config': {},
+        }
 
 
 # ─── Excel cache (TTL) ──────────────────────────────────────────────────
@@ -44,7 +52,7 @@ def get_excel():
     if _excel_cache is not None and (now - _cache_loaded_at) < EXCEL_CACHE_TTL:
         return _excel_cache
     config = _load_config()
-    excel_path = config.get('path_config', {}).get('excel_path', '/mnt/e/电影管理.xlsx')
+    excel_path = config.get('path_config', {}).get('excel_path', './电影管理.xlsx')
     _excel_cache = ExcelManager(excel_path)
     _cache_loaded_at = now
     return _excel_cache
@@ -134,6 +142,51 @@ def spa_fallback(path):
 
 
 # ─── Query APIs ────────────────────────────────────────────────────────
+
+@app.route('/api/actress/<name>/detail')
+def api_actress_detail(name):
+    """Aggregated stats for a single actress."""
+    excel = get_excel()
+    records = [r for r in excel.get_all_movies()
+               if (r.get('actor', '') or '').strip() == name]
+
+    movies = [format_movie(r) for r in records]
+    tag_counts: dict[str, int] = {}
+    rating_dist: dict[int, int] = {1: 0, 2: 0, 3: 0, 4: 0, 5: 0}
+    rated = 0
+    total_size = 0
+
+    for r in records:
+        tags_str = r.get('tags', '')
+        if tags_str:
+            for t in tags_str.split(','):
+                t = t.strip()
+                if t:
+                    tag_counts[t] = tag_counts.get(t, 0) + 1
+        rating = r.get('rating', '0')
+        if rating and rating != '0':
+            r_int = int(rating)
+            if 1 <= r_int <= 5:
+                rating_dist[r_int] += 1
+                rated += 1
+        total_size += parse_size_to_bytes(r.get('file_size', '0'))
+
+    top_tags = dict(sorted(tag_counts.items(), key=lambda x: -x[1])[:15])
+    avg_rating = round(
+        sum(k * v for k, v in rating_dist.items()) / max(rated, 1), 1
+    )
+
+    return jsonify({
+        'name': name,
+        'total': len(records),
+        'rated': rated,
+        'avg_rating': avg_rating,
+        'total_size': format_file_size(total_size),
+        'rating_distribution': rating_dist,
+        'top_tags': top_tags,
+        'movies': sorted(movies, key=lambda x: x['downloaded_at'], reverse=True),
+    })
+
 
 @app.route('/api/actors')
 def api_actors():
@@ -352,31 +405,6 @@ def api_stats():
     })
 
 
-def _parse_size_to_bytes(size_str):
-    """Parse '6.27 GB' style string to integer bytes. Returns 0 on failure."""
-    try:
-        parts = size_str.strip().split()
-        if len(parts) == 2:
-            val = float(parts[0])
-            unit = parts[1].upper()
-            multipliers = {'TB': 1024**4, 'GB': 1024**3, 'MB': 1024**2, 'KB': 1024}
-            return int(val * multipliers.get(unit, 1))
-    except (ValueError, IndexError):
-        pass
-    return 0
-
-
-def _format_size_bytes(total_bytes):
-    """Format byte count to human-readable string."""
-    if total_bytes >= 1024**4:
-        return f"{total_bytes / (1024**4):.2f} TB"
-    if total_bytes >= 1024**3:
-        return f"{total_bytes / (1024**3):.1f} GB"
-    if total_bytes >= 1024**2:
-        return f"{total_bytes / (1024**2):.1f} MB"
-    return f"{total_bytes} B"
-
-
 def _aggregate_stats(records):
     """Aggregate actor/tag/rating/size stats from records. Returns stats dict."""
     from datetime import datetime, timedelta
@@ -414,7 +442,7 @@ def _aggregate_stats(records):
         if r.get('status') == 'classified':
             classified += 1
 
-        total_size_bytes += _parse_size_to_bytes(r.get('file_size', '0'))
+        total_size_bytes += parse_size_to_bytes(r.get('file_size', '0'))
 
         dl = r.get('downloaded_at', '')
         if dl:
@@ -463,13 +491,35 @@ def api_stats_detail():
         'top_actors': stats['top_actors'],
         'rating_distribution': stats['rating_distribution'],
         'tag_counts': stats['tag_counts'],
-        'total_size': _format_size_bytes(stats['total_size_bytes']),
+        'total_size': format_file_size(stats['total_size_bytes']),
         'avg_rating': stats['avg_rating'],
         'recent_downloads': stats['recent_downloads'],
     })
 
 
 # ─── Mutation API (rating + tags only) ──────────────────────────────────
+
+@app.route('/api/movies/quick-rate')
+def api_quick_rate():
+    """Return a random unrated movie for quick rating mode."""
+    excel = get_excel()
+    records = excel.get_all_movies()
+    unrated = [r for r in records if not (r.get('rating', '0') or '0').strip() or r.get('rating', '0') == '0']
+    total = len(records)
+    rated_count = total - len(unrated)
+
+    if not unrated:
+        return jsonify({'movie': None, 'rated': rated_count, 'total': total, 'done': True})
+
+    import random
+    pick = random.choice(unrated)
+    return jsonify({
+        'movie': format_movie(pick),
+        'rated': rated_count,
+        'total': total,
+        'done': False,
+    })
+
 
 @app.route('/api/movies/<movie_id>', methods=['PATCH'])
 def patch_movie(movie_id):
@@ -539,6 +589,19 @@ def _wsl_to_win(wsl_path):
     return wsl_path.replace('/', '\\')
 
 
+def _resolve_path(wsl_path: str) -> str:
+    """Convert a WSL path to a path the current OS can open.
+
+    On Windows Python, /mnt/e/... → E:\\...
+    On WSL/Linux Python, /mnt/e/... stays as-is (WSL can access /mnt/ natively).
+    """
+    if not wsl_path:
+        return wsl_path
+    if os.name == 'nt':
+        return _wsl_to_win(wsl_path)
+    return wsl_path
+
+
 @app.route('/api/open-folder', methods=['POST'])
 def open_folder():
     """Open the file's containing folder in Windows Explorer."""
@@ -546,18 +609,14 @@ def open_folder():
     movie_id = data.get('movie_id', '')
 
     excel = get_excel()
-    row = excel.find_row_by_id(movie_id)
-    if not row:
+    row, fp = _resolve_movie(excel, movie_id)
+    if not row or not fp:
         return jsonify({'success': False, 'error': '影片不存在'}), 404
-
-    fp_idx = excel._get_column_index('file_path')
-    wsl_path = (row[fp_idx].value or '').strip()
-    if not wsl_path or not os.path.exists(wsl_path):
+    if not os.path.exists(fp):
         return jsonify({'success': False, 'error': '文件不存在'}), 404
 
-    win_path = _wsl_to_win(wsl_path)
     try:
-        subprocess.Popen(['explorer.exe', '/select,', win_path],
+        subprocess.Popen(['explorer.exe', '/select,', fp],
                          stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         return jsonify({'success': True})
     except Exception as e:
@@ -565,14 +624,14 @@ def open_folder():
 
 
 def _collect_files_by_ids(excel, ids):
-    """Collect (wsl_path, display_name) for given movie IDs."""
+    """Collect (resolved_path, display_name) for given movie IDs."""
     files = []
     fp_idx = excel._get_column_index('file_path')
     fn_idx = excel._get_column_index('file_name')
     for mid in ids:
         row = excel.find_row_by_id(mid)
         if row:
-            fp = (row[fp_idx].value or '').strip()
+            fp = _resolve_path((row[fp_idx].value or '').strip())
             fn = (row[fn_idx].value or '').strip()
             if fp and os.path.exists(fp):
                 files.append((fp, fn))
@@ -592,7 +651,7 @@ def _collect_files_by_filter(excel, data):
                               rating_min=rating_min, status=status, search=search)
     files = []
     for r in filtered:
-        fp = (r.get('file_path') or '').strip()
+        fp = _resolve_path((r.get('file_path') or '').strip())
         fn = (r.get('file_name') or '').strip()
         if fp and os.path.exists(fp):
             files.append((fp, fn))
@@ -659,7 +718,7 @@ def open_filtered():
     if not files:
         return jsonify({'success': False, 'error': '没有匹配的文件'}), 404
 
-    link_dir = '/mnt/e/筛选结果'
+    link_dir = os.path.join(tempfile.gettempdir(), 'movieTool_筛选结果')
     created = _create_shortcuts(files, link_dir)
 
     win_link_dir = _wsl_to_win(link_dir)
@@ -675,12 +734,12 @@ def open_filtered():
 # ─── Batch Operations ───────────────────────────────────────────────────
 
 def _resolve_movie(excel, movie_id):
-    """Return (row, file_path_wsl) or (None, None) if not found."""
+    """Return (row, resolved_path) or (None, None) if not found. Path is converted for current OS."""
     row = excel.find_row_by_id(movie_id)
     if not row:
         return None, None
     fp = (row[excel._get_column_index('file_path')].value or '').strip()
-    return row, fp
+    return row, _resolve_path(fp)
 
 
 @app.route('/api/movies/batch/delete', methods=['POST'])
@@ -962,6 +1021,95 @@ def api_thumb(movie_id):
     return send_file(cache_path, mimetype='image/jpeg')
 
 
+# ─── Backup Management ────────────────────────────────────────────────
+
+@app.route('/api/backups')
+def api_backups():
+    """List all backup files."""
+    config = _load_config()
+    backup_dir = config.get('path_config', {}).get('backup_dir', '')
+    if not backup_dir or not os.path.exists(backup_dir):
+        return jsonify({'backups': [], 'dir': backup_dir})
+
+    files = []
+    for f in sorted(os.listdir(backup_dir), reverse=True):
+        path = os.path.join(backup_dir, f)
+        if os.path.isfile(path) and f.endswith('.xlsx'):
+            stat = os.stat(path)
+            files.append({
+                'name': f,
+                'size': format_file_size(stat.st_size),
+                'mtime': int(stat.st_mtime),
+                'mtime_str': time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(stat.st_mtime)),
+            })
+    return jsonify({'backups': files, 'dir': backup_dir})
+
+
+@app.route('/api/backup/create', methods=['POST'])
+def api_backup_create():
+    """Create a new backup now."""
+    excel = get_excel()
+    config = _load_config()
+    backup_dir = config.get('path_config', {}).get('backup_dir', '')
+    if not backup_dir:
+        return jsonify({'success': False, 'error': '未配置备份目录'}), 400
+    try:
+        target = excel.backup_excel(backup_dir)
+        invalidate_excel_cache()
+        return jsonify({'success': True, 'path': target})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/backup/restore/<filename>', methods=['POST'])
+def api_backup_restore(filename):
+    """Restore Excel from a backup file."""
+    # Prevent path traversal
+    if '..' in filename or '/' in filename or '\\' in filename:
+        return jsonify({'success': False, 'error': '非法文件名'}), 400
+    config = _load_config()
+    backup_dir = config.get('path_config', {}).get('backup_dir', '')
+    src = os.path.join(backup_dir, filename)
+    if not os.path.exists(src) or not os.path.realpath(src).startswith(os.path.realpath(backup_dir)):
+        return jsonify({'success': False, 'error': '备份文件不存在'}), 404
+
+    excel = get_excel()
+    dst = excel.excel_path
+    try:
+        shutil.copy2(src, dst)
+        invalidate_excel_cache()
+        return jsonify({'success': True, 'restored': filename})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/backup/<filename>', methods=['DELETE'])
+def api_backup_delete(filename):
+    """Delete a specific backup file."""
+    if '..' in filename or '/' in filename or '\\' in filename:
+        return jsonify({'success': False, 'error': '非法文件名'}), 400
+    config = _load_config()
+    backup_dir = config.get('path_config', {}).get('backup_dir', '')
+    path = os.path.join(backup_dir, filename)
+    if not os.path.exists(path) or not os.path.realpath(path).startswith(os.path.realpath(backup_dir)):
+        return jsonify({'success': False, 'error': '文件不存在'}), 404
+    try:
+        os.unlink(path)
+        return jsonify({'success': True, 'deleted': filename})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
 if __name__ == '__main__':
-    print('🎬 电影分类浏览器启动: http://localhost:5000')
-    app.run(host='127.0.0.1', port=5000, debug=os.environ.get('FLASK_DEBUG', '').lower() == 'true')
+    host = os.environ.get('FLASK_HOST', '127.0.0.1')
+    port = int(os.environ.get('FLASK_PORT', '5000'))
+    debug = os.environ.get('FLASK_DEBUG', '').lower() == 'true'
+    use_production = os.environ.get('FLASK_PRODUCTION', '').lower() == 'true'
+
+    if use_production:
+        from waitress import serve
+        print(f'🎬 电影分类浏览器 (生产模式): http://{host}:{port}')
+        serve(app, host=host, port=port)
+    else:
+        print(f'🎬 电影分类浏览器启动: http://{host}:{port}')
+        app.run(host=host, port=port, debug=debug)

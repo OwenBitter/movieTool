@@ -70,7 +70,7 @@ def main():
         excel_path = args.excel
     else:
         config = ConfigManager()
-        excel_path = config.get('path_config', {}).get('excel_path', '/mnt/e/电影管理.xlsx')
+        excel_path = config.get('path_config', {}).get('excel_path', './电影管理.xlsx')
 
     excel = ExcelManager(excel_path)
     records = excel.get_all_movies()

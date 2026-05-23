@@ -1,6 +1,8 @@
 import os
 from datetime import datetime
 
+from core.utils import format_file_size
+
 
 class Scanner:
     def __init__(self, config, excel_manager, logger=None):
@@ -48,17 +50,7 @@ class Scanner:
             'file_name': file_name,
             'movie_name': os.path.splitext(file_name)[0],
             'file_path': file_path,
-            'file_size': self._format_size(file_size),
+            'file_size': format_file_size(file_size),
             'status': 'new',
             'downloaded_at': downloaded_at
         }
-
-    @staticmethod
-    def _format_size(size_bytes):
-        if size_bytes < 1024:
-            return f'{size_bytes} B'
-        if size_bytes < 1024 ** 2:
-            return f'{size_bytes / 1024:.2f} KB'
-        if size_bytes < 1024 ** 3:
-            return f'{size_bytes / 1024 ** 2:.2f} MB'
-        return f'{size_bytes / 1024 ** 3:.2f} GB'
