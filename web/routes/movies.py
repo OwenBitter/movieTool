@@ -8,8 +8,10 @@ from flask import Blueprint, Response, jsonify, request
 
 from web.server_state import get_state
 from web.shared import (
+    clean_movie_tags,
     filter_records,
     format_movie,
+    get_actress_names,
     get_excel,
 )
 
@@ -39,6 +41,11 @@ def api_movies():
                          size_min=size_min, size_max=size_max,
                          date_from=date_from, date_to=date_to)
     filtered = [format_movie(r) for r in raw]
+
+    # Clean tags: remove actress names and Japanese-only text
+    actress_names = get_actress_names(excel)
+    for m in filtered:
+        m['tags'] = clean_movie_tags(m['tags'], actress_names)
 
     if sort == 'rating':
         filtered.sort(key=lambda x: -x['rating'])
@@ -104,8 +111,11 @@ def api_quick_rate():
         return jsonify({'movie': None, 'rated': rated_count, 'total': total, 'done': True})
 
     pick = random.choice(unrated)
+    movie = format_movie(pick)
+    actress_names = get_actress_names(excel)
+    movie['tags'] = clean_movie_tags(movie['tags'], actress_names)
     return jsonify({
-        'movie': format_movie(pick),
+        'movie': movie,
         'rated': rated_count,
         'total': total,
         'done': False,

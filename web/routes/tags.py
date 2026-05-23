@@ -7,13 +7,31 @@ from flask import Blueprint, jsonify, request
 from web.server_state import get_state
 from web.shared import (
     CONFIG_PATH,
+    _has_traditional,
+    _JAPANESE_RE,
     _load_config,
+    get_actress_names,
     get_available_tags,
     get_excel,
     get_tag_config,
 )
 
 tags_bp = Blueprint('tags', __name__)
+
+
+def _clean_custom_tags(tags_usage: dict, actress_names: set[str]) -> list:
+    """Filter custom tags: exclude actress names, Japanese, and traditional Chinese."""
+    clean = []
+    for tag in tags_usage:
+        if tag in actress_names:
+            continue
+        if _JAPANESE_RE.search(tag):
+            continue
+        if _has_traditional(tag):
+            continue
+        clean.append(tag)
+    clean.sort(key=lambda t: -tags_usage[t])
+    return clean
 
 
 @tags_bp.route('/api/tag-templates')
@@ -30,7 +48,14 @@ def api_tags():
     available = get_available_tags()
     type_tags = get_tag_config().get('type_tags', [])
     all_defined = set(available + type_tags)
-    custom_tags = [t for t in state.tags_usage if t not in all_defined]
+    custom_keys = set(state.tags_usage.keys()) - all_defined
+    custom_tags = sorted(custom_keys, key=lambda t: -state.tags_usage[t])
+    if custom_tags:
+        actress_names = get_actress_names(excel)
+        custom_tags = _clean_custom_tags(
+            {t: state.tags_usage[t] for t in custom_tags},
+            actress_names,
+        )
     delimiter = get_tag_config().get('delimiter', ',')
 
     return jsonify({

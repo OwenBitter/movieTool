@@ -25,6 +25,7 @@ config.json
 
 # Backups
 *.bak
+/backups
 
 # OS
 .DS_Store

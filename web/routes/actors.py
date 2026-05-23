@@ -5,8 +5,10 @@ from flask import Blueprint, jsonify, request
 from web.server_state import get_state
 from web.shared import (
     _resolve_path,
+    clean_movie_tags,
     format_file_size,
     format_movie,
+    get_actress_names,
     get_excel,
     parse_size_to_bytes,
 )
@@ -45,6 +47,10 @@ def api_actress_detail(name):
     avg_rating = round(
         sum(k * v for k, v in rating_dist.items()) / max(rated, 1), 1
     )
+
+    actress_names = {name}
+    for m in movies:
+        m['tags'] = clean_movie_tags(m['tags'], actress_names)
 
     return jsonify({
         'name': name,

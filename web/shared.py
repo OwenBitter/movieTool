@@ -7,6 +7,7 @@ import csv as csv_mod
 import io
 import json
 import os
+import re
 import subprocess
 import tempfile
 import threading
@@ -22,6 +23,49 @@ from core.utils import format_file_size, parse_size_to_bytes
 
 CONFIG_PATH = str(Path(__file__).resolve().parent.parent / 'config.json')
 DIST_DIR = str(Path(__file__).resolve().parent / 'static' / 'dist')
+
+
+# ─── Tag cleaning ───────────────────────────────────────────────────────────
+
+_JAPANESE_RE = re.compile(r'[぀-ゟ゠-ヿ]')
+
+# Traditional-only Chinese chars that appear in our tag data (never used in simplified)
+# Traditional-only Chinese chars common in tag data (never used in simplified)
+_TRADITIONAL_CHARS = set('單體戲劇獨畫質碼賽藝數風關學條癡聖爲與從雲馬龍龜裏響聽貓臺灣係將帶連進過邊隊戰勝敗護詞彙選擇導團區傷麵開軌婦蕩輕艷戀亂顏淩戀憂鬱驗驚懼廣慶實當歸變獸廳選樣準讓認試識護導團區傷軌婦蕩輕艷戀亂顏戀憂鬱驗驚懼廣慶實當歸變獸廳選樣準讓認試亜')
+
+
+def _has_traditional(text: str) -> bool:
+    """Check if text contains any traditional-only Chinese character."""
+    return any(c in _TRADITIONAL_CHARS for c in text)
+
+
+def clean_movie_tags(tags_str: str, actress_names: set[str]) -> str:
+    """Remove actress names, Japanese-only, and traditional Chinese tags."""
+    if not tags_str:
+        return ''
+    clean = []
+    for t in tags_str.split(','):
+        t = t.strip()
+        if not t:
+            continue
+        if t in actress_names:
+            continue
+        if _JAPANESE_RE.search(t):
+            continue
+        if _has_traditional(t):
+            continue
+        clean.append(t)
+    return ','.join(clean)
+
+
+def get_actress_names(excel) -> set[str]:
+    """Extract all unique actress/actor names from Excel records."""
+    names = set()
+    for r in excel.get_all_movies():
+        a = (r.get('actor', '') or '').strip()
+        if a:
+            names.add(a)
+    return names
 
 
 # ─── Config loading ─────────────────────────────────────────────────────

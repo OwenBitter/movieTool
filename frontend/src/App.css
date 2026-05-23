@@ -279,6 +279,26 @@ html, body, #root {
   min-height: 36px;
 }
 
+/* Filter popover */
+.filter-popover {
+  width: 600px;
+  max-height: 520px;
+  overflow-y: auto;
+}
+.filter-popover::-webkit-scrollbar {
+  width: 4px;
+}
+.filter-popover::-webkit-scrollbar-thumb {
+  background: #333;
+  border-radius: 2px;
+}
+
+.filter-tag-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
 /* Content */
 .content-header {
   padding: 12px 20px;

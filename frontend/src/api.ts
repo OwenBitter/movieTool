@@ -1,3 +1,4 @@
+import { debounce } from 'lodash';
 import type { Movie, Actor, TagConfig, Stats, PaginatedMovies } from './types';
 
 const BASE = '/api';
@@ -57,17 +58,17 @@ export async function exportMoviesCSV(params: Record<string, string>): Promise<B
   return resp.blob();
 }
 
-export async function openFolder(movieId: string): Promise<void> {
+export const openFolder = debounce(async (movieId: string): Promise<void> => {
   await postJSON(`${BASE}/open-folder`, { movie_id: movieId });
-}
+}, 500, { leading: true, trailing: false });
 
 export async function openFiltered(movieIds: string[]): Promise<void> {
   await postJSON(`${BASE}/open-filtered`, { movie_ids: movieIds });
 }
 
-export async function playMovie(movieId: string): Promise<void> {
+export const playMovie = debounce(async (movieId: string): Promise<void> => {
   await postJSON(`${BASE}/play/${movieId}`, {});
-}
+}, 500, { leading: true, trailing: false });
 
 // Batch operations
 export async function deleteMovies(ids: string[]): Promise<void> {

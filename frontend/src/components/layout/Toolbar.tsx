@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { Input, Select, Button, Segmented, Tag, Rate, Popover, Space } from 'antd';
 import {
   SearchOutlined, ExportOutlined, TagsOutlined, ThunderboltOutlined,
@@ -56,9 +57,26 @@ export function Toolbar({ onTagManager, onQuickRate, onBackup }: ToolbarProps) {
   const usage = tagsConfig?.usage || {};
   const attrTags = tagsConfig?.available_tags || [];
   const typeTags = tagsConfig?.type_tags || [];
+  const customTags = tagsConfig?.custom_tags || [];
+  const [filterSearch, setFilterSearch] = useState('');
+
+  const filterTagSearch = filterSearch.toLowerCase();
+  const filterAttrTags = filterTagSearch ? attrTags.filter((t) => t.toLowerCase().includes(filterTagSearch)) : attrTags;
+  const filterTypeTags = filterTagSearch ? typeTags.filter((t) => t.toLowerCase().includes(filterTagSearch)) : typeTags;
+  const filterCustomTags = filterTagSearch ? customTags.filter((t) => t.toLowerCase().includes(filterTagSearch)) : customTags;
 
   const filterPopover = (
-    <div style={{ width: 320, maxHeight: 420, overflowY: 'auto' }}>
+    <div className="filter-popover">
+      <div style={{ marginBottom: 10 }}>
+        <Input
+          placeholder="搜索标签..."
+          value={filterSearch}
+          onChange={(e) => setFilterSearch(e.target.value)}
+          allowClear
+          size="small"
+          onClick={(e) => e.stopPropagation()}
+        />
+      </div>
       <div style={{ marginBottom: 12 }}>
         <div style={{ fontSize: 12, color: '#88889a', marginBottom: 4 }}>⭐ 最低评分</div>
         <Rate value={movies.rating} onChange={setRating} allowClear style={{ fontSize: 18 }} />
@@ -71,29 +89,44 @@ export function Toolbar({ onTagManager, onQuickRate, onBackup }: ToolbarProps) {
           <Tag color={movies.status === 'new' ? 'gold' : 'default'} style={{ cursor: 'pointer' }} onClick={() => setStatus(movies.status === 'new' ? '' : 'new')}>未分类</Tag>
         </Space>
       </div>
-      {attrTags.length > 0 && (
+      {filterAttrTags.length > 0 && (
         <div style={{ marginBottom: 12 }}>
           <div style={{ fontSize: 12, color: '#88889a', marginBottom: 4 }}>📌 属性标签</div>
-          <Space size={[4, 4]} wrap>
-            {attrTags.map((t) => (
-              <Tag key={t} color={movies.tags.includes(t) ? 'gold' : 'default'} style={{ cursor: 'pointer' }} onClick={() => toggleTag(t)}>
+          <div className="filter-tag-list">
+            {filterAttrTags.map((t) => (
+              <Tag key={t} color={movies.tags.includes(t) ? 'gold' : 'default'} style={{ cursor: 'pointer', margin: 0 }} onClick={() => toggleTag(t)}>
                 {t}{usage[t] ? ` ${usage[t]}` : ''}
               </Tag>
             ))}
-          </Space>
+          </div>
         </div>
       )}
-      {typeTags.length > 0 && (
-        <div>
+      {filterTypeTags.length > 0 && (
+        <div style={{ marginBottom: 12 }}>
           <div style={{ fontSize: 12, color: '#88889a', marginBottom: 4 }}>🎬 类型标签</div>
-          <Space size={[4, 4]} wrap>
-            {typeTags.map((t) => (
-              <Tag key={t} color={movies.tags.includes(t) ? 'gold' : 'default'} style={{ cursor: 'pointer' }} onClick={() => toggleTag(t)}>
+          <div className="filter-tag-list">
+            {filterTypeTags.map((t) => (
+              <Tag key={t} color={movies.tags.includes(t) ? 'gold' : 'default'} style={{ cursor: 'pointer', margin: 0 }} onClick={() => toggleTag(t)}>
                 {t}{usage[t] ? ` ${usage[t]}` : ''}
               </Tag>
             ))}
-          </Space>
+          </div>
         </div>
+      )}
+      {filterCustomTags.length > 0 && (
+        <div>
+          <div style={{ fontSize: 12, color: '#88889a', marginBottom: 4 }}>🏷 自定义标签</div>
+          <div className="filter-tag-list">
+            {filterCustomTags.map((t) => (
+              <Tag key={t} color={movies.tags.includes(t) ? 'gold' : 'default'} style={{ cursor: 'pointer', margin: 0 }} onClick={() => toggleTag(t)}>
+                {t}{usage[t] ? ` ${usage[t]}` : ''}
+              </Tag>
+            ))}
+          </div>
+        </div>
+      )}
+      {filterSearch && filterAttrTags.length === 0 && filterTypeTags.length === 0 && filterCustomTags.length === 0 && (
+        <div style={{ color: '#555', fontSize: 12, textAlign: 'center', padding: 12 }}>无匹配标签</div>
       )}
     </div>
   );

@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { debounce } from 'lodash';
 import type { Actor, Movie, MovieFilters, TagConfig, Stats, SortField, ViewMode } from '../types';
 import type { ThemeMode } from '../styles/theme';
 import * as api from '../api';
@@ -125,7 +126,7 @@ export const useStore = create<AppState>((set, get) => ({
 
   setLoading: (loading) => set({ loading }),
 
-  fetchMovies: async () => {
+  fetchMovies: debounce(async () => {
     const { movies: filters } = get();
     set({ loading: true });
     try {
@@ -143,7 +144,7 @@ export const useStore = create<AppState>((set, get) => ({
     } finally {
       set({ loading: false });
     }
-  },
+  }, 300),
 
   fetchActors: async () => {
     try {
