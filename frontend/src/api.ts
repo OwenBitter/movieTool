@@ -1,5 +1,5 @@
 import { debounce } from 'lodash';
-import type { Movie, Actor, TagConfig, Stats, PaginatedMovies } from './types';
+import type { Movie, Actor, TagConfig, Stats, PaginatedMovies, ValidateResponse, RepairResponse } from './types';
 
 const BASE = '/api';
 
@@ -56,6 +56,15 @@ export async function exportMoviesCSV(params: Record<string, string>): Promise<B
   const resp = await fetch(`${BASE}/movies/export?${qs}`);
   if (!resp.ok) throw new Error(await resp.text());
   return resp.blob();
+}
+
+// Path validation
+export async function validateMoviePaths(): Promise<ValidateResponse> {
+  return postJSON<ValidateResponse>(`${BASE}/validate-paths`, {});
+}
+
+export async function repairMoviePath(movieId: string): Promise<RepairResponse> {
+  return postJSON<RepairResponse>(`${BASE}/repair-path`, { movie_id: movieId });
 }
 
 export const openFolder = debounce(async (movieId: string): Promise<void> => {

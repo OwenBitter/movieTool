@@ -1,11 +1,12 @@
 import { useState } from 'react';
-import { Input, Select, Button, Segmented, Tag, Rate, Popover, Space } from 'antd';
+import { Input, Select, Button, Segmented, Tag, Rate, Popover, Space, Modal, List, message } from 'antd';
 import {
   SearchOutlined, ExportOutlined, TagsOutlined, ThunderboltOutlined,
-  CloudServerOutlined, FilterOutlined, CloseOutlined,
+  CloudServerOutlined, FilterOutlined, CloseOutlined, CheckCircleOutlined,
 } from '@ant-design/icons';
 import { useStore } from '../../store';
-import { exportMoviesCSV } from '../../api';
+import { exportMoviesCSV, validateMoviePaths, repairMoviePath } from '../../api';
+import type { PathCheckResult } from '../../types';
 
 interface ToolbarProps {
   onTagManager: () => void;
@@ -59,6 +60,52 @@ export function Toolbar({ onTagManager, onQuickRate, onBackup }: ToolbarProps) {
   const typeTags = tagsConfig?.type_tags || [];
   const customTags = tagsConfig?.custom_tags || [];
   const [filterSearch, setFilterSearch] = useState('');
+
+  // ── Path validation ──────────────────────────────────────────────
+  const [validateOpen, setValidateOpen] = useState(false);
+  const [validating, setValidating] = useState(false);
+  const [validateResults, setValidateResults] = useState<PathCheckResult[]>([]);
+  const [validCount, setValidCount] = useState(0);
+  const [invalidCount, setInvalidCount] = useState(0);
+  const [repairing, setRepairing] = useState<Set<string>>(new Set());
+
+  const handleValidate = async () => {
+    setValidating(true);
+    setValidateResults([]);
+    setValidCount(0);
+    setInvalidCount(0);
+    try {
+      const res = await validateMoviePaths();
+      // Sort: invalid first, then valid
+      const sorted = [...res.results].sort((a, b) => Number(a.exists) - Number(b.exists));
+      setValidateResults(sorted);
+      setValidCount(res.valid);
+      setInvalidCount(res.invalid);
+      setValidateOpen(true);
+    } catch {
+      message.error('验证失败');
+    } finally {
+      setValidating(false);
+    }
+  };
+
+  const handleRepair = async (movieId: string) => {
+    setRepairing((prev) => new Set(prev).add(movieId));
+    try {
+      const res = await repairMoviePath(movieId);
+      if (res.found) {
+        message.success(`已修复: ${res.new_path}`);
+        // Refresh results
+        await handleValidate();
+      } else {
+        message.warning(res.message || '未找到文件');
+      }
+    } catch {
+      message.error('修复失败');
+    } finally {
+      setRepairing((prev) => { const n = new Set(prev); n.delete(movieId); return n; });
+    }
+  };
 
   const filterTagSearch = filterSearch.toLowerCase();
   const filterAttrTags = filterTagSearch ? attrTags.filter((t) => t.toLowerCase().includes(filterTagSearch)) : attrTags;
@@ -132,6 +179,7 @@ export function Toolbar({ onTagManager, onQuickRate, onBackup }: ToolbarProps) {
   );
 
   return (
+    <>
     <div className="toolbar">
       <Input
         prefix={<SearchOutlined style={{ color: '#666678' }} />}
@@ -196,10 +244,71 @@ export function Toolbar({ onTagManager, onQuickRate, onBackup }: ToolbarProps) {
           { value: 'table', label: '📋 表格' },
         ]}
       />
+      <Button icon={<CheckCircleOutlined />} onClick={handleValidate} loading={validating}>验证路径</Button>
       <Button icon={<ExportOutlined />} onClick={handleExport}>导出</Button>
       <Button icon={<ThunderboltOutlined />} onClick={onQuickRate}>快速评分</Button>
       <Button icon={<CloudServerOutlined />} onClick={onBackup}>备份</Button>
       <Button icon={<TagsOutlined />} onClick={onTagManager}>标签管理</Button>
     </div>
+
+      <Modal
+        title="路径验证结果"
+        open={validateOpen}
+        onCancel={() => setValidateOpen(false)}
+        footer={
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <span style={{ color: '#88889a', fontSize: 13 }}>
+              共 {validateResults.length} 部
+              {validCount > 0 && <span style={{ color: '#52c41a', marginLeft: 8 }}>✓ 有效 {validCount}</span>}
+              {invalidCount > 0 && <span style={{ color: '#ff4d4f', marginLeft: 8 }}>✗ 无效 {invalidCount}</span>}
+            </span>
+            <Button onClick={() => setValidateOpen(false)}>关闭</Button>
+          </div>
+        }
+        width={700}
+        styles={{ body: { maxHeight: '60vh', overflowY: 'auto' } }}
+      >
+        {invalidCount > 0 && (
+          <div style={{ marginBottom: 12, padding: '8px 12px', background: 'rgba(255,77,79,0.1)', borderRadius: 6, color: '#ff4d4f', fontSize: 13 }}>
+            ⚠ 以下 {invalidCount} 部影片的文件路径不存在
+          </div>
+        )}
+        <List
+          dataSource={validateResults}
+          renderItem={(item: PathCheckResult) => (
+            <List.Item
+              style={{ background: item.exists ? 'transparent' : 'rgba(255,77,79,0.04)', borderRadius: 6, marginBottom: 2 }}
+              actions={item.exists ? [] : [
+                <Button
+                  size="small"
+                  type="link"
+                  loading={repairing.has(item.movie_id)}
+                  onClick={() => handleRepair(item.movie_id)}
+                >
+                  修复
+                </Button>
+              ]}
+            >
+              <List.Item.Meta
+                title={
+                  <span style={{ color: item.exists ? '#52c41a' : '#ff4d4f' }}>
+                    {item.exists ? '✓' : '✗'} {item.movie_name}
+                  </span>
+                }
+                description={
+                  <div>
+                    <span style={{ color: '#88889a', fontSize: 12 }}>{item.actor}</span>
+                    <div style={{ fontSize: 11, color: '#666678', wordBreak: 'break-all', marginTop: 2 }}>
+                      {item.file_path}
+                    </div>
+                  </div>
+                }
+              />
+            </List.Item>
+          )}
+          locale={{ emptyText: '暂无数据' }}
+        />
+      </Modal>
+    </>
   );
 }

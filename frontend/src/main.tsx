@@ -5,6 +5,7 @@ import zhCN from 'antd/locale/zh_CN';
 import { getTheme } from './styles/theme';
 import { useStore } from './store';
 import App from './App';
+import 'animal-island-ui/style';
 import './App.css';
 
 function ThemeBridge({ children }: { children: React.ReactNode }) {

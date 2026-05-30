@@ -11,14 +11,13 @@ html, body, #root {
   height: 100%;
   background: var(--bg-root, #08080c);
   color: var(--text-root, #e8e8ee);
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto,
-    'Helvetica Neue', Arial, 'Noto Sans', sans-serif;
+  font-family: Nunito, "Noto Sans SC", "PingFang SC", "Microsoft YaHei", -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   transition: background 0.25s, color 0.25s;
 }
 
 [data-theme="light"] {
-  --bg-root: #f5f5f5;
-  --text-root: #1a1a2e;
+  --bg-root: #f0e8d8;
+  --text-root: #794f27;
 }
 
 [data-theme="dark"] {
@@ -60,8 +59,8 @@ html, body, #root {
   color: #e8e8ee;
 }
 .actor-item.active {
-  background: rgba(232, 184, 75, 0.12);
-  color: #e8b84b;
+  background: rgba(25, 200, 185, 0.12);
+  color: #19c8b9;
   font-weight: 600;
 }
 .actor-item .count {
@@ -107,7 +106,7 @@ html, body, #root {
 }
 .movie-card:hover {
   transform: translateY(-4px);
-  box-shadow: 0 8px 32px rgba(232, 184, 75, 0.12);
+  box-shadow: 0 8px 32px rgba(25, 200, 185, 0.12);
   border-color: rgba(255, 255, 255, 0.1);
 }
 .movie-card::before {
@@ -117,17 +116,17 @@ html, body, #root {
   left: 0;
   right: 0;
   height: 3px;
-  background: linear-gradient(90deg, rgba(232, 184, 75, 0.3), rgba(232, 184, 75, 0.1));
+  background: linear-gradient(90deg, rgba(25, 200, 185, 0.3), rgba(25, 200, 185, 0.1));
 }
 .movie-card.rated::before {
-  background: #e8b84b;
+  background: #19c8b9;
 }
 .movie-card.rated-high::before {
-  background: linear-gradient(90deg, #e8b84b, #f5d06b, #e8b84b);
+  background: linear-gradient(90deg, #19c8b9, #3dd4c6, #19c8b9);
 }
 .movie-card.selected {
-  border-color: #e8b84b;
-  box-shadow: 0 0 0 1px rgba(232, 184, 75, 0.3);
+  border-color: #19c8b9;
+  box-shadow: 0 0 0 1px rgba(25, 200, 185, 0.3);
 }
 
 /* Thumbnail */
@@ -169,13 +168,13 @@ html, body, #root {
   margin-bottom: 8px;
 }
 .movie-card .card-code {
-  color: #e8b84b;
+  color: #19c8b9;
   font-weight: 700;
   font-size: 15px;
   cursor: pointer;
 }
 .movie-card .card-code:hover {
-  color: #f5d06b;
+  color: #3dd4c6;
   text-decoration: underline;
 }
 .movie-card .card-actor {
@@ -210,8 +209,78 @@ html, body, #root {
   transition: all 0.15s;
 }
 .movie-card .tag-add:hover {
-  color: #e8b84b;
-  border-color: #e8b84b;
+  color: #19c8b9;
+  border-color: #19c8b9;
+}
+
+/* Light theme overrides for custom components */
+[data-theme="light"] .movie-card {
+  background: #f8f8f0;
+  border-color: #e8e2d6;
+}
+[data-theme="light"] .movie-card:hover {
+  box-shadow: 0 8px 32px rgba(25, 200, 185, 0.10);
+  border-color: #d6c9b8;
+}
+[data-theme="light"] .movie-card .card-actor,
+[data-theme="light"] .movie-card .card-meta {
+  color: #9f927d;
+}
+[data-theme="light"] .sidebar {
+  background: #e8ddd0;
+  border-right-color: #d6c9b8;
+}
+[data-theme="light"] .sidebar-title {
+  color: #794f27;
+  border-bottom-color: #d6c9b8;
+}
+[data-theme="light"] .app-header {
+  background: #e8ddd0;
+  border-bottom-color: #d6c9b8;
+}
+[data-theme="light"] .app-header h1 {
+  color: #794f27;
+}
+[data-theme="light"] .app-header .header-stats {
+  color: #9f927d;
+}
+[data-theme="light"] .toolbar {
+  background: #f0e8d8;
+  border-bottom-color: #d6c9b8;
+}
+[data-theme="light"] .filter-bar {
+  background: #e8ddd0;
+  border-bottom-color: #d6c9b8;
+}
+[data-theme="light"] .batch-toolbar {
+  background: rgba(25, 200, 185, 0.06);
+  border-bottom-color: rgba(25, 200, 185, 0.15);
+}
+[data-theme="light"] .actor-item {
+  color: #9f927d;
+}
+[data-theme="light"] .actor-item:hover {
+  background: rgba(25, 200, 185, 0.06);
+  color: #794f27;
+}
+[data-theme="light"] .actor-item.active {
+  background: rgba(25, 200, 185, 0.10);
+}
+[data-theme="light"] .actor-item .count {
+  color: #c4b89e;
+  background: rgba(0, 0, 0, 0.04);
+}
+[data-theme="light"] .content-header {
+  border-bottom-color: #d6c9b8;
+}
+[data-theme="light"] ::-webkit-scrollbar-track {
+  background: #e8ddd0;
+}
+[data-theme="light"] ::-webkit-scrollbar-thumb {
+  background: #d6c9b8;
+}
+[data-theme="light"] ::-webkit-scrollbar-thumb:hover {
+  background: #c4b89e;
 }
 
 /* Sidebar */
@@ -315,8 +384,8 @@ html, body, #root {
 /* Batch toolbar */
 .batch-toolbar {
   padding: 8px 20px;
-  background: rgba(232, 184, 75, 0.06);
-  border-bottom: 1px solid rgba(232, 184, 75, 0.15);
+  background: rgba(25, 200, 185, 0.06);
+  border-bottom: 1px solid rgba(25, 200, 185, 0.15);
   display: flex;
   align-items: center;
   gap: 8px;
@@ -331,7 +400,7 @@ html, body, #root {
 /* Table cell clickable */
 .clickable-cell {
   cursor: pointer;
-  color: #3b82f6;
+  color: #19c8b9;
 }
 .clickable-cell:hover {
   text-decoration: underline;

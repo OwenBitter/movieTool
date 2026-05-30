@@ -58,6 +58,33 @@ export interface PaginatedMovies {
   per_page: number;
 }
 
+export interface PathCheckResult {
+  movie_id: string;
+  movie_name: string;
+  actor: string;
+  file_size: string;
+  file_path: string;
+  exists: boolean;
+}
+
+export interface ValidateResponse {
+  success: boolean;
+  total: number;
+  valid: number;
+  invalid: number;
+  results: PathCheckResult[];
+}
+
+export interface RepairResponse {
+  success: boolean;
+  found: boolean;
+  movie_id: string;
+  movie_name?: string;
+  old_path?: string;
+  new_path?: string;
+  message?: string;
+}
+
 export type SortField = 'time' | 'rating' | 'name';
 export type ViewMode = 'card' | 'table';
 
